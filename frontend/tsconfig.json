@@ -18,10 +18,11 @@
         "name": "next"
       }
     ],
+    "baseUrl": "frontend/src",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["*"]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "include": ["frontend/next-env.d.ts", "**/*.ts", "**/*.tsx", "frontend/.next/types/**/*.ts"],
   "exclude": ["node_modules"]
 }
