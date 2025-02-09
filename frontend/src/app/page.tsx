@@ -1,8 +1,10 @@
-import Page from "./dashboard/page"
+
+import StartupsPage from "./sidebar/page";
 
 export default function Home() {
   return (
-      <div>
-      </div>
+    <div>
+      <StartupsPage/>
+    </div>
   );
 }
