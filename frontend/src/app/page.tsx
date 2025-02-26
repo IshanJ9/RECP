@@ -1,5 +1,5 @@
 
-import StartupsPage from "./sidebar/page";
+import StartupsPage from "./dashboard/page";
 
 export default function Home() {
   return (

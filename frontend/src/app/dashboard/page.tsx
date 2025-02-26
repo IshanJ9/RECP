@@ -1,10 +1,12 @@
 "use client"
+import { useRouter } from 'next/navigation';
 import React, { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
 const StartupsPage = () => {
+  const router = useRouter();
   const startups = [
     {
       id: 1,
@@ -13,7 +15,9 @@ const StartupsPage = () => {
       category: "CleanTech",
       fundingStage: "Series A",
       location: "San Francisco",
-      founded: "2022"
+      founded: "2022",
+      budget: "$5.2M",
+      averageProjectTime: "6-9 months"
     },
     {
       id: 2,
@@ -22,7 +26,9 @@ const StartupsPage = () => {
       category: "HealthTech",
       fundingStage: "Seed",
       location: "Boston",
-      founded: "2023"
+      founded: "2023",
+      budget: "$1.8M",
+      averageProjectTime: "3-6 months"
     },
     {
       id: 3,
@@ -31,7 +37,9 @@ const StartupsPage = () => {
       category: "FinTech",
       fundingStage: "Series B",
       location: "New York",
-      founded: "2021"
+      founded: "2021",
+      budget: "$12.5M",
+      averageProjectTime: "9-12 months"
     },
     {
       id: 4,
@@ -40,7 +48,9 @@ const StartupsPage = () => {
       category: "Enterprise",
       fundingStage: "Series A",
       location: "Austin",
-      founded: "2022"
+      founded: "2022",
+      budget: "$7.3M",
+      averageProjectTime: "6-8 months"
     }
   ];
 
@@ -53,6 +63,10 @@ const StartupsPage = () => {
     const categoryMatch = selectedCategory === "All" || startup.category === selectedCategory;
     return categoryMatch ;
   });
+
+  const handleViewDetails = (startupId: number) => {
+    router.push(`/startup/${startupId}`);
+  };
 
   return (
     <div className="p-8">
@@ -78,9 +92,9 @@ const StartupsPage = () => {
     </div>
         
       {/* Startup Cards Grid - Modified for vertical layout */}
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-4">
         {filteredStartups.map(startup => (
-          <Card key={startup.id} className="hover:shadow-lg transition-shadow flex flex-col h-96">
+          <Card key={startup.id} className="hover:shadow-lg transition-shadow flex flex-col h-auto min-h-[300px] w-full">
             <CardHeader className="flex-none">
               <div className="space-y-2">
                 <CardTitle className="text-xl font-bold">{startup.name}</CardTitle>
@@ -88,18 +102,29 @@ const StartupsPage = () => {
               </div>
             </CardHeader>
             <CardContent className="flex-grow flex flex-col justify-between">
-              <div className="space-y-4">
+              <div className="space-y-2 mt-2">
                 <CardDescription className="text-sm">{startup.description}</CardDescription>
                 <Badge variant="outline">{startup.category}</Badge>
-              </div>
-              <div className="space-y-2 mt-4">
+              <div className="text-sm text-gray-500">
+                  Budget: {startup.budget}
+                </div>
                 <div className="text-sm text-gray-500">
+                  Estimated Time: {startup.averageProjectTime}
+                </div>
+                {/* <div className="text-sm text-gray-500">
                   Location: {startup.location}
                 </div>
                 <div className="text-sm text-gray-500">
                   Founded: {startup.founded}
-                </div>
+                </div> */}
               </div>
+              <Button 
+                className="w-full mt-4 bg-black text-white font-bold hover:bg-gray-800"
+                variant="outline"
+                onClick={() => handleViewDetails(startup.id)}
+              >
+                View Details
+              </Button>
             </CardContent>
           </Card>
         ))}
