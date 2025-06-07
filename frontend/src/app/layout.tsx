@@ -9,6 +9,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import config from "@/wagmiConfig"; // Import wagmi config
 import "@rainbow-me/rainbowkit/styles.css";
 import "./globals.css";
+import { ThemeProvider } from '@/context/ThemeContext';
 
 const queryClient = new QueryClient();
 
@@ -16,48 +17,50 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const [isExpanded, setIsExpanded] = useState(true);
 
   return (
-    <html lang="en">
-      <body className="min-h-screen">
-        {/* Wrap with Providers */}
-        <WagmiProvider config={config}>
-          <QueryClientProvider client={queryClient}>
-            <RainbowKitProvider
-              theme={midnightTheme({
-                accentColorForeground: 'white',
-                borderRadius: 'large',
-                fontStack: 'system',
-                overlayBlur: 'small',
-              })}
-              coolMode={true}
-              >
-              
-              {/* Navbar */}
-              <Navbar />
-
-              {/* Main container */}
-              <div className="flex">
-                {/* Sidebar */}
-                <aside
-                  className={`fixed left-0 top-16 h-[calc(100vh-4rem)] bg-white shadow-lg transition-all duration-300 ease-in-out ${
-                    isExpanded ? "w-64" : "w-16"
-                  }`}
+    <html lang="en" suppressHydrationWarning>
+      <body>
+        <ThemeProvider>
+          {/* Wrap with Providers */}
+          <WagmiProvider config={config}>
+            <QueryClientProvider client={queryClient}>
+              <RainbowKitProvider
+                theme={midnightTheme({
+                  accentColorForeground: 'white',
+                  borderRadius: 'large',
+                  fontStack: 'system',
+                  overlayBlur: 'small',
+                })}
+                coolMode={true}
                 >
-                  <Sidebar isExpanded={isExpanded} onToggle={() => setIsExpanded(!isExpanded)} />
-                </aside>
+                
+                {/* Navbar */}
+                <Navbar />
 
-                {/* Main content */}
-                <main
-                  className={`flex-1 transition-all duration-300 pt-16 bg-gray-50 min-h-screen ${
-                    isExpanded ? "ml-64" : "ml-16"
-                  }`}
-                >
-                  <div className="p-8">{children}</div>
-                </main>
-              </div>
+                {/* Main container */}
+                <div className="flex">
+                  {/* Sidebar */}
+                  <aside
+                    className={`fixed left-0 top-16 h-[calc(100vh-4rem)] bg-white shadow-lg transition-all duration-300 ease-in-out ${
+                      isExpanded ? "w-64" : "w-16"
+                    }`}
+                  >
+                    <Sidebar isExpanded={isExpanded} onToggle={() => setIsExpanded(!isExpanded)} />
+                  </aside>
 
-            </RainbowKitProvider>
-          </QueryClientProvider>
-        </WagmiProvider>
+                  {/* Main content */}
+                  <main
+                    className={`flex-1 transition-all duration-300 pt-16 bg-gray-50 min-h-screen ${
+                      isExpanded ? "ml-64" : "ml-16"
+                    }`}
+                  >
+                    <div className="p-8">{children}</div>
+                  </main>
+                </div>
+
+              </RainbowKitProvider>
+            </QueryClientProvider>
+          </WagmiProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

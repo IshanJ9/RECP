@@ -3,8 +3,8 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
-import { useParams, useSearchParams } from 'next/navigation';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -65,6 +65,7 @@ const startupsData = [
 ];
 
 export default function AnalyticsPage() {
+  const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
   const startupId = Number(params.id || searchParams.get('id') || 1);
@@ -81,7 +82,9 @@ export default function AnalyticsPage() {
   const completedMilestones = startup.stats.timeline.milestones.filter(m => m.complete).length;
   const progressPercentage = (completedMilestones / totalMilestones) * 100;
   
-  
+  const handleVoteNow = () => {
+    router.push(`/startup/${startupId}/analytics/voting`);
+  };
 
   return (
     <div className="container mx-auto p-4 max-w-4xl">
@@ -275,6 +278,71 @@ export default function AnalyticsPage() {
             <div className="text-sm text-gray-500">Share</div>
             <div className="text-xl font-bold">{startup.stats.involvement.share}%</div>
           </Card>
+        </div>
+      </div>
+
+      {/* Voting Section */}
+      <div className="mb-10">
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-2xl font-bold">Round 1 voting</h2>
+            <Badge variant="outline" className="bg-red-100 text-red-700 rounded-full px-3 py-1">
+              Live
+            </Badge>
+          </div>
+
+          {/* Option 1 */}
+          <div className="mb-3">
+            <div className="flex justify-between mb-1">
+              <span>Option 1</span>
+              <span className="font-semibold">48%</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="bg-blue-500 h-2 rounded-full" style={{ width: '48%' }}></div>
+            </div>
+          </div>
+
+          {/* Option 2 */}
+          <div className="mb-3">
+            <div className="flex justify-between mb-1">
+              <span>Option 2</span>
+              <span className="font-semibold">27%</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="bg-blue-500 h-2 rounded-full" style={{ width: '27%' }}></div>
+            </div>
+          </div>
+
+          {/* Option 3 */}
+          <div className="mb-6">
+            <div className="flex justify-between mb-1">
+              <span>Option 3</span>
+              <span className="font-semibold">25%</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="bg-blue-500 h-2 rounded-full" style={{ width: '25%' }}></div>
+            </div>
+          </div>
+
+          <div className="flex justify-end">
+            <button 
+              className="px-6 py-2 bg-red-600 text-white font-bold rounded-full hover:bg-red-700 transition-colors"
+              onClick={handleVoteNow}
+            >
+              Vote Now
+            </button>
+          </div>
+        </div>
+
+        {/* Voting Guidelines */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="text-xl font-bold mb-4">Voting guidelines:</h3>
+          <ul className="list-disc list-inside space-y-2">
+            <li>The voting starts at 25 Jan 2025 8 A.M. and ends at 29 Jan 2025 8 P.M.</li>
+            <li>Each member will receive 1000 tokens.</li>
+            <li>Each option can have a minimum of 2000 tokens and maximum of 10,000 tokens.</li>
+            <li>If a member fails to vote during the scheduled time, their participation in the voting round will not be considered.</li>
+          </ul>
         </div>
       </div>
     </div>

@@ -45,7 +45,7 @@ const Navbar = () => {
           smallScreen: 'avatar',
           largeScreen: 'full',
         }}
-        showBalance={false}
+        showBalance={true}
         chainStatus="icon"
       />
       </div>

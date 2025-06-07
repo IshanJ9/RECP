@@ -1,6 +1,7 @@
 "use client"
 import React from 'react';
-import { Home, Users, Settings, HelpCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Home, FolderPlus, Settings, Folders, ChevronLeft, ChevronRight } from 'lucide-react';
+import Link from 'next/link';
 
 interface SidebarProps {
   isExpanded: boolean;
@@ -10,9 +11,9 @@ interface SidebarProps {
 const Sidebar = ({ isExpanded, onToggle }: SidebarProps) => {
   const menuItems = [
     { icon: Home, label: 'Home', path: '/' },
-    { icon: Users, label: 'Users', path: '/users' },
-    { icon: Settings, label: 'Settings', path: '/settings' },
-    { icon: HelpCircle, label: 'Help', path: '/help' }
+    { icon: FolderPlus, label: 'Create Project', path: '/create-project' },
+    { icon: Folders, label: 'Your Projects', path: '/your-projects' },
+    { icon: Settings, label: 'Settings', path: '/settings' }
   ];
 
   return (
@@ -30,7 +31,7 @@ const Sidebar = ({ isExpanded, onToggle }: SidebarProps) => {
           {menuItems.map((item) => {
             const Icon = item.icon;
             return (
-              <a
+              <Link
                 key={item.path}
                 href={item.path}
                 className={`flex items-center gap-4 p-2 rounded-lg hover:bg-gray-100 transition-colors mb-2 ${
@@ -44,7 +45,7 @@ const Sidebar = ({ isExpanded, onToggle }: SidebarProps) => {
                     {item.label}
                   </span>
                 )}
-              </a>
+              </Link>
             );
           })}
         </div>
