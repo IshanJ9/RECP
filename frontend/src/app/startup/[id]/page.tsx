@@ -1,221 +1,257 @@
 "use client"
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useParams, useRouter } from 'next/navigation';
-
-// This would eventually come from an API or database
-const startupsData = [
-  {
-    id: 1,
-    name: "EcoTech Solutions",
-    description: "Sustainable energy solutions for homes and businesses. Focusing on renewable energy integration and smart grid technologies for a greener future.",
-    category: "CleanTech",
-    fundingStage: "Series A",
-    location: "San Francisco",
-    founded: "2022",
-    budget: "$5.2M",
-    averageProjectTime: "6-9 months",
-    founderName: "Sarah Chen",
-    tagline: "is an innovative clean energy platform designed for eco-conscious customers looking to make a positive environmental impact with their energy choices.",
-    detailText: "We connect users with local renewable energy providers that offer eco-friendly, sustainable solutions across categories like solar, wind, and geothermal energy.\n\nBy partnering with small and medium-sized enterprises committed to sustainability, we aim to reduce carbon footprints and promote greener consumer choices.",
-    features: [
-      "Ethically sourced and environmentally responsible products",
-      "Carbon offset tracking",
-      "Green certifications",
-      "Personalized sustainability goals"
-    ],
-    mission: "Our mission is simple: Power better, live better, and create a greener world—one purchase at a time.",
-    energyStatus: "Wind Energy",
-    projectStatus: "On Time"
-  },
-  {
-    id: 2,
-    name: "HealthAI",
-    description: "AI-powered healthcare diagnostics platform. Leveraging machine learning to provide accurate medical diagnostics and personalized treatment recommendations.",
-    category: "HealthTech",
-    fundingStage: "Seed",
-    location: "Boston",
-    founded: "2023",
-    budget: "$1.8M",
-    averageProjectTime: "3-6 months",
-    founderName: "Michael Lee",
-    tagline: "is an AI-powered diagnostics platform designed for healthcare professionals looking to enhance patient outcomes through technology.",
-    detailText: "We connect doctors with cutting-edge diagnostic tools that offer accurate, timely insights across specialties like cardiology, neurology, and oncology.\n\nBy leveraging machine learning and vast medical datasets, we aim to improve diagnostic accuracy and promote personalized medicine approaches.",
-    features: [
-      "AI-powered diagnostic suggestions",
-      "Patient history analysis",
-      "Treatment recommendation engine",
-      "Outcome prediction models"
-    ],
-    mission: "Our mission is simple: Diagnose better, treat better, and create a healthier world—one patient at a time.",
-    energyStatus: "High Priority",
-    projectStatus: "In Progress"
-  },
-  {
-    id: 3,
-    name: "FinFlow",
-    description: "Next-gen payment processing for small businesses. Streamlining financial operations with innovative blockchain technology and smart contracts.",
-    category: "FinTech",
-    fundingStage: "Series B",
-    location: "New York",
-    founded: "2021",
-    budget: "$12.5M",
-    averageProjectTime: "9-12 months",
-    founderName: "Jessica Morgan",
-    tagline: "is a next-gen financial platform designed for small businesses looking to streamline their payment operations.",
-    detailText: "We connect businesses with innovative payment solutions that offer secure, fast, and transparent transactions across both traditional and cryptocurrency channels.\n\nBy implementing blockchain technology and smart contracts, we aim to reduce transaction costs and promote financial inclusion for all businesses.",
-    features: [
-      "Secure blockchain transactions",
-      "Smart contract automation",
-      "Cross-border payment optimization",
-      "Detailed financial analytics"
-    ],
-    mission: "Our mission is simple: Pay better, grow better, and create a more financially inclusive world—one transaction at a time.",
-    energyStatus: "High Volume",
-    projectStatus: "On Time"
-  },
-  {
-    id: 4,
-    name: "DataMind",
-    description: "Enterprise data analytics platform. Transforming big data into actionable insights through advanced visualization and predictive modeling.",
-    category: "Enterprise",
-    fundingStage: "Series A",
-    location: "Austin",
-    founded: "2022",
-    budget: "$7.3M",
-    averageProjectTime: "6-8 months",
-    founderName: "Alex Wilson",
-    tagline: "is an enterprise analytics platform designed for businesses looking to transform their data into actionable insights.",
-    detailText: "We connect organizations with powerful analytical tools that offer deep insights across departments like marketing, operations, and finance.\n\nBy harnessing the power of machine learning and predictive analytics, we aim to uncover hidden patterns and promote data-driven decision making.",
-    features: [
-      "Real-time data visualization",
-      "Predictive analytics models",
-      "Automated insight generation",
-      "Custom reporting solutions"
-    ],
-    mission: "Our mission is simple: Analyze better, decide better, and create a more data-driven world—one insight at a time.",
-    energyStatus: "Moderate Use",
-    projectStatus: "Ahead of Schedule"
-  }
-];
+import { useProjectStore } from '@/store/projectStore';
+import { ethers } from "ethers";
+import ProjectABI from "@/utils/abi/Project.json";
 
 export default function StartupDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const startupId = Number(params.id);
+  const projectId = params.id as string;
+  const getProjectById = useProjectStore(state => state.getProjectById);
+  const project = getProjectById(projectId);
   
-  // Find the selected startup
-  const startup = startupsData.find(s => s.id === startupId);
-  
-  if (!startup) {
-    return <div className="p-8">Startup not found</div>;
+  const [timeRemaining, setTimeRemaining] = useState<string>("");
+  const [isExpired, setIsExpired] = useState(false);
+
+  // Calculate time remaining
+  useEffect(() => {
+    if (!project?.address) return;
+    
+    const calculateTimeRemaining = async () => {
+      try {
+        if (!(window as any).ethereum) return;
+        
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const contract = new ethers.Contract(project.address, ProjectABI, provider);
+        
+        // Get start time and duration from contract
+        const startTime = await contract.startTime();
+        const duration = await contract.duration();
+        
+        const startTimeMs = Number(startTime) * 1000; // Convert to milliseconds
+        const durationMs = Number(duration) * 1000;
+        const endTimeMs = startTimeMs + durationMs;
+        const currentTimeMs = Date.now();
+        
+        if (currentTimeMs >= endTimeMs) {
+          setTimeRemaining("Project Expired");
+          setIsExpired(true);
+          return;
+        }
+        
+        const remainingMs = endTimeMs - currentTimeMs;
+        
+        // Convert to human readable format
+        const days = Math.floor(remainingMs / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((remainingMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+        
+        let timeStr = '';
+        if (days > 0) timeStr += `${days}d `;
+        if (hours > 0) timeStr += `${hours}h `;
+        if (minutes > 0) timeStr += `${minutes}m`;
+        
+        setTimeRemaining(timeStr.trim() || "Less than 1 minute");
+        setIsExpired(false);
+      } catch (error) {
+        console.error("Error calculating time remaining:", error);
+        setTimeRemaining("Unable to calculate");
+      }
+    };
+    
+    calculateTimeRemaining();
+    // Update every minute
+    const interval = setInterval(calculateTimeRemaining, 60000);
+    
+    return () => clearInterval(interval);
+  }, [project?.address]);
+
+  // Optionally: fallback to static data or fetch from blockchain if not found
+  if (!project) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-semibold text-gray-900 mb-4">Project not found</h1>
+          <Button onClick={() => router.push('/dashboard')} className="bg-gray-900 hover:bg-black text-white">
+            Back to Dashboard
+          </Button>
+        </div>
+      </div>
+    );
   }
 
-  const handleViewDetails = (id: number) => {
-    router.push(`/startup/${id}`);
-  };
-
   return (
-    <div className="container mx-auto p-4 max-w-4xl">
-
-      {/* Founder info */}
-      <div className="flex items-center gap-4 mb-6">
-        <div className="w-12 h-12 rounded-full bg-gray-200 overflow-hidden">
-        <Image src="/placeholder-avatar.png" width={48} height={48} alt="Founder avatar" />
-        </div>
-        <div>
-          <h2 className="font-bold">{startup.founderName} - {startup.name}</h2>
-          <div className="text-sm text-gray-500">@{startup.founderName.toLowerCase().replace(' ', '')}</div>
-        </div>
-      </div>
-
-      {/* Status badges */}
-      <div className="flex gap-2 mb-6">
-        <Badge variant="outline" className="bg-gray-100 text-gray-700 rounded-full px-3 py-1">
-          {startup.energyStatus}
-        </Badge>
-        <Badge variant="outline" className="bg-green-100 text-green-700 rounded-full px-3 py-1">
-          {startup.projectStatus}
-        </Badge>
-      </div>
-
-      {/* Project details */}
-      <div className="mb-8">
-        <h1 className="text-xl font-bold mb-4">Project details</h1>
-        <p className="mb-2">
-          <span className="font-bold">{startup.name}</span> {startup.tagline}
-        </p>
-        
-        <div className="my-4 whitespace-pre-line">
-          {startup.detailText}
-        </div>
-        
-        <div className="space-y-2 my-4">
-          <p>Our platform not only helps users find <span className="font-bold">ethically</span> sourced and environmentally responsible products but also offers features like carbon offset tracking, <span className="font-bold">green certifications</span>, and personalized sustainability goals.</p>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="container mx-auto px-6 py-6">
+          <Button 
+            variant="ghost" 
+            onClick={() => router.push('/dashboard')}
+            className="mb-4 text-gray-600 hover:text-gray-900"
+          >
+            ← Back to Projects
+          </Button>
           
-          <p>{startup.name} is built to <span className="font-bold">encourage mindful shopping</span>, making it easier for people to reduce waste, support local communities, and contribute to a more <span className="font-bold">sustainable</span> future.</p>
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-6">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden flex items-center justify-center">
+                <Image src="/placeholder-avatar.png" width={64} height={64} alt="Project avatar" className="rounded-2xl" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900 mb-2">{project.name}</h1>
+                <p className="text-lg text-gray-600 mb-2">by {project.founderName}</p>
+                <a
+                  href={`https://sepolia.etherscan.io/address/${project.founder}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-gray-900 transition-all duration-200 text-sm font-medium"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                  {project.founder?.slice(0, 6)}...{project.founder?.slice(-4)}
+                </a>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              <Badge 
+                variant="outline" 
+                className={`px-4 py-2 rounded-full font-medium ${
+                  project.isActive 
+                    ? 'bg-green-50 text-green-700 border-green-200' 
+                    : 'bg-red-50 text-red-700 border-red-200'
+                }`}
+              >
+                {project.isActive ? 'Active' : 'Inactive'}
+              </Badge>
+              <Badge variant="outline" className="px-4 py-2 rounded-full font-medium bg-blue-50 text-blue-700 border-blue-200">
+                {project.category}
+              </Badge>
+            </div>
+          </div>
         </div>
-        
-        <p className="mt-4">{startup.mission}</p>
       </div>
 
-      {/* Resources section */}
-      <div className="mb-8">
-        <h2 className="text-xl font-bold mb-4">Resources</h2>
-        <div className="flex gap-2">
-          <Button variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100">
-            Click here to view
-          </Button>
-          <Button variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100">
-            Join Discord
-          </Button>
-          <Button variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100" onClick={() => router.push(`/startup/${startup.id}/analytics`)}>
-            View Analytics
-          </Button>
-        </div>
-      </div>
+      {/* Main Content */}
+      <div className="container mx-auto px-6 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Left Column - Project Details */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Description Card */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">Project Description</h2>
+              <p className="text-gray-700 leading-relaxed">{project.description}</p>
+            </div>
 
-      {/* Similar startups */}
-      <div>
-        <h2 className="text-xl font-bold mb-4">Similar startups</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {startupsData
-            .filter(s => s.id !== startupId ) //s.category === startup.category
-            .slice(0, 3)
-            .map(similarStartup => (
-              <div key={similarStartup.id} className="border rounded-lg overflow-hidden">
-                <div className="p-3 border-b">
-                  <div className="flex justify-between items-center">
-                    <div className="text-xs text-gray-500">30 May, 2023</div>
-                    <button className="text-gray-400">
-                     
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-2 mt-2">
-                    
-                    <div className="text-sm">Steven Smith</div>
-                  </div>
-                  <div className="font-bold mt-1">{similarStartup.name}</div>
-                  <div className="text-xs text-gray-500 line-clamp-2 mt-1">
-                    A mobile app that helps users track and reduce their carbon footprint through daily activities.
-                  </div>
+            {/* Time Remaining Card */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">Time Remaining</h2>
+              <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-lg ${
+                isExpired 
+                  ? 'bg-red-100 text-red-700' 
+                  : 'bg-green-100 text-green-700'
+              }`}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                {timeRemaining}
+              </div>
+            </div>
+
+            {/* Resources Section */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">Resources & Actions</h2>
+              <div className="flex flex-wrap gap-3">
+                <Button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl">
+                  📊 View Analytics
+                </Button>
+                <Button variant="outline" className="border-purple-200 text-purple-700 hover:bg-purple-50 px-6 py-2 rounded-xl">
+                  💬 Join Discord
+                </Button>
+                <Button variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50 px-6 py-2 rounded-xl">
+                  📋 View Documents
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column - Stats & Info */}
+          <div className="space-y-6">
+            {/* Stats Card */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Project Stats</h3>
+              <div className="space-y-4">
+                <div className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">
+                  <span className="text-sm text-gray-600">Budget</span>
+                  <span className="font-semibold text-gray-900">{project.budget} ETH</span>
                 </div>
-
-              
-                <div className="p-3 flex justify-between">
-                  <button className="text-sm">Compare</button>
-                  <button 
-                    className="bg-black text-white text-sm px-3 py-1 rounded"
-                    onClick={() => handleViewDetails(similarStartup.id)}
-                  >
-                    Details
-                  </button>
+                <div className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">
+                  <span className="text-sm text-gray-600">Duration</span>
+                  <span className="font-semibold text-gray-900">{project.duration}</span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">
+                  <span className="text-sm text-gray-600">Proposal Limit</span>
+                  <span className="font-semibold text-gray-900">{project.proposalLimit} ETH</span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">
+                  <span className="text-sm text-gray-600">Investment Limit</span>
+                  <span className="font-semibold text-gray-900">{project.investmentLimit} ETH</span>
                 </div>
               </div>
-            ))}
+            </div>
+
+            {/* Contract Info Card */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Contract Information</h3>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm text-gray-600 mb-2">Smart Contract</p>
+                  <a
+                    href={`https://sepolia.etherscan.io/address/${project.address}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-gray-900 transition-all duration-200 text-sm font-medium w-full justify-center"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                    View on Etherscan
+                  </a>
+                </div>
+                <div className="text-xs text-gray-500 font-mono bg-gray-50 p-3 rounded-xl break-all">
+                  {project.address}
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Actions Card */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
+              <div className="space-y-3">
+                <Button 
+                  className="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-medium"
+                  onClick={() => router.push(`/startup/${project.id}/invest`)}
+                >
+                  💰 Invest in Project
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="w-full border-gray-200 text-gray-700 hover:bg-gray-50 py-3 rounded-xl font-medium"
+                  onClick={() => router.push(`/startup/${project.id}/proposals`)}
+                >
+                  🗳️ View Proposals
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -8,16 +8,22 @@ import { ethers } from "ethers";
 import { formatEther } from "ethers";
 import ProjectFactoryABI from "@/utils/abi/ProjectFactory.json";
 import ProjectABI from "@/utils/abi/Project.json";
+import { useProjectStore } from '@/store/projectStore';
 
-const PROJECT_FACTORY_ADDRESS = "0x85aEce15ba6c5743339a3a869c6d636f80AB31aE"; // Replace with your deployed address
+const PROJECT_FACTORY_ADDRESS = "0xBB613302b1d36db09D54fA63B2a6E499622D0282"; // Replace with your deployed address
 
 const StartupsPage = () => {
-  const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedCategory, setSelectedCategory] = useState("All"); // Move this up
+  const [selectedCategory, setSelectedCategory] = useState("All");
   const router = useRouter();
+  const projects = useProjectStore(state => state.projects);
+  const setProjects = useProjectStore(state => state.setProjects);
 
   useEffect(() => {
+    if (projects.length > 0) {
+      setLoading(false);
+      return;
+    }
     const fetchProjects = async () => {
       try {
         if (!(window as any).ethereum) {
@@ -33,7 +39,8 @@ const StartupsPage = () => {
           console.error("Failed to connect to wallet:", walletError);
         }
         
-        try {          console.log("Factory address:", PROJECT_FACTORY_ADDRESS);
+        try {          
+          console.log("Factory address:", PROJECT_FACTORY_ADDRESS);
           const factory = new ethers.Contract(
             PROJECT_FACTORY_ADDRESS, 
             ProjectFactoryABI, 
@@ -51,7 +58,8 @@ const StartupsPage = () => {
           const projectsArr = [];
           
           for (let i = 1; i <= numProjects; i++) {
-            try {              console.log(`Fetching project ${i} address...`);
+            try {              
+              console.log(`Fetching project ${i} address...`);
               // @ts-ignore - TypeScript doesn't know about our contract methods
               const projectAddr = await connectedFactory.projectIdToAddress(i);
               console.log(`Project ${i} address:`, projectAddr);
@@ -102,12 +110,25 @@ const StartupsPage = () => {
                 projectData.budget = "0";
               }
               
-              try {
-                const duration = await project.duration;
-                projectData.duration = duration?.toString?.();
+              try { 
+                let durationSeconds = await project.duration();
+                if (durationSeconds?._isBigNumber) durationSeconds = durationSeconds.toString();
+                durationSeconds = Number(durationSeconds);
+                // Convert seconds to years, months, days (using average month = 30.44 days)
+                const years = Math.floor(durationSeconds / (365 * 24 * 60 * 60));
+                let remaining = durationSeconds % (365 * 24 * 60 * 60);
+                const months = Math.floor(remaining / (30.44 * 24 * 60 * 60));
+                remaining = remaining % Math.floor(30.44 * 24 * 60 * 60);
+                const days = Math.floor(remaining / (24 * 60 * 60));
+                let durationStr = '';
+                if (years > 0) durationStr += `${years} years `;
+                if (months > 0) durationStr += `${months} months `;
+                if (days > 0) durationStr += `${days} days`;
+                if (!durationStr) durationStr = '0 days';
+                projectData.duration = durationStr.trim();
               } catch (error) {
                 console.error(`Error fetching duration for project ${i}:`, error);
-                projectData.duration = "0";
+                projectData.duration = "0 days";
               }
               
               try {
@@ -132,16 +153,36 @@ const StartupsPage = () => {
                 console.error(`Error fetching description for project ${i}:`, error);
                 projectData.description = "No description available";
               }
-              
-              try {
+                try {
                 projectData.category = await project.category();
               } catch (error) {
                 console.error(`Error fetching category for project ${i}:`, error);
                 projectData.category = "Other";
               }
               
-              console.log(`Adding project ${i} to list:`, projectData);
-              projectsArr.push(projectData);
+              try {
+                projectData.isActive = await project.isActive();
+              } catch (error) {
+                console.error(`Error fetching isActive for project ${i}:`, error);
+                projectData.isActive = true; // Default to active if we can't fetch
+              }
+                console.log(`Adding project ${i} to list:`, projectData);
+              // Ensure all required fields are present and string-typed for Zustand store
+              // Convert values from wei to ETH (divide by 1e18)
+              projectsArr.push({
+                id: projectData.id?.toString?.() ?? String(i),
+                name: projectData.name ?? `Project ${i}`,
+                founderName: projectData.founderName ?? "Unknown",
+                founder: projectData.founder ?? "",
+                budget: projectData.budget ? (Number(projectData.budget) / 1e18).toString() : "0",
+                duration: projectData.duration?.toString?.() ?? "0",
+                proposalLimit: projectData.proposalLimit ? (Number(projectData.proposalLimit) / 1e18).toString() : "0",
+                investmentLimit: projectData.investmentLimit ? (Number(projectData.investmentLimit) / 1e18).toString() : "0",
+                description: projectData.description ?? "No description available",
+                category: projectData.category ?? "Other",
+                address: projectData.address ?? "",
+                isActive: projectData.isActive ?? true,
+              });
             } catch (projectError) {
               console.error(`Error processing project ${i}:`, projectError);
             }
@@ -160,7 +201,7 @@ const StartupsPage = () => {
     };
     
     fetchProjects();
-  }, []);
+  }, [projects.length, setProjects]);
 
   const categories = ["All", ...Array.from(new Set(projects.map(p => p.category)))];
   const filteredProjects = projects.filter(p => selectedCategory === "All" || p.category === selectedCategory);
@@ -191,32 +232,67 @@ const StartupsPage = () => {
       </div>
       {loading ? (
         <div>Loading projects...</div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-4">
+      ) : (        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredProjects.map(project => (
-            <Card key={project.id} className="hover:shadow-lg transition-shadow flex flex-col h-auto min-h-[300px] w-full">
-              <CardHeader className="flex-none">
-                <div className="space-y-2">
-                  <CardTitle className="text-xl font-bold">{project.name}</CardTitle>
-                  <Badge variant="secondary">Founder: {project.founderName}</Badge>
+            <Card key={project.id} className="group relative overflow-hidden border-0 bg-white shadow-sm hover:shadow-xl transition-all duration-300 rounded-2xl">
+              {/* Subtle gradient background */}
+              <div className="absolute inset-0 bg-gradient-to-br from-gray-50/50 to-white"></div>
+              
+              <CardContent className="relative p-6 h-full flex flex-col">
+                {/* Header section */}                <div className="mb-4">
+                  <div className="flex items-start justify-between mb-3">
+                    <Badge variant="outline" className="px-3 py-1 text-xs font-medium bg-gray-100 text-gray-700 border-gray-200 rounded-full">
+                      {project.category}
+                    </Badge>
+                    <div className={`w-2 h-2 rounded-full ${project.isActive ? 'bg-green-400' : 'bg-red-400'}`}></div>
+                  </div>
+                  <CardTitle className="text-xl font-semibold text-gray-900 mb-2 leading-tight">
+                    {project.name}
+                  </CardTitle>
+                  <p className="text-sm text-gray-500 font-medium">by {project.founderName}</p>
                 </div>
-              </CardHeader>
-              <CardContent className="flex-grow flex flex-col justify-between">
-                <div className="space-y-2 mt-2">
-                  <CardDescription className="text-sm">{project.description}</CardDescription>
-                  <Badge variant="outline">{project.category}</Badge>
-                  <div className="text-sm text-gray-500">Budget: {project.budget} ETH</div>
-                  <div className="text-sm text-gray-500">Duration: {project.duration} days</div>
-                  <div className="text-sm text-gray-500">Proposal Limit: {project.proposalLimit}</div>
-                  <div className="text-sm text-gray-500">Investment Limit: {project.investmentLimit} ETH</div>
-                  <div className="text-xs text-gray-400">Contract: {project.address}</div>
+
+                {/* Description */}
+                <CardDescription className="text-sm text-gray-600 leading-relaxed mb-6 line-clamp-2 flex-grow">
+                  {project.description}
+                </CardDescription>
+
+                {/* Stats grid */}
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                  <div className="text-center p-3 bg-gray-50 rounded-xl">
+                    <div className="text-lg font-bold text-gray-900">{project.budget}</div>
+                    <div className="text-xs text-gray-500">Budget (ETH)</div>
+                  </div>
+                  <div className="text-center p-3 bg-gray-50 rounded-xl">
+                    <div className="text-lg font-bold text-gray-900">{project.duration}</div>
+                    <div className="text-xs text-gray-500">Duration</div>
+                  </div>
                 </div>
+
+                {/* Contract address */}
+                <div className="mb-4">
+                  <a
+                    href={`https://sepolia.etherscan.io/address/${project.address}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors duration-200"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                    {project.address?.slice(0, 6)}...{project.address?.slice(-4)}
+                  </a>
+                </div>
+
+                {/* Action button */}
                 <Button 
-                  className="w-full mt-4 bg-black text-white font-bold hover:bg-gray-800"
-                  variant="outline"
+                  className="w-full bg-gray-900 hover:bg-black text-white font-medium py-2.5 rounded-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
                   onClick={() => handleViewDetails(project.id)}
                 >
                   View Details
+                  <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
                 </Button>
               </CardContent>
             </Card>

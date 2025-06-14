@@ -17,7 +17,7 @@ contract Project is Ownable {
     address private tokenAddress;
     uint256 public immutable proposalLimit;
     uint256 public tokenGivenToEveryone;
-    uint256 private  immutable duration;
+    uint256 public immutable duration;
     string public description;
     string public category;
 
