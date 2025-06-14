@@ -11,3 +11,4 @@ REPORT_GAS=true npx hardhat test
 npx hardhat node
 npx hardhat ignition deploy ./ignition/modules/Lock.js
 ```
+Project Factory Contract - 0x85aEce15ba6c5743339a3a869c6d636f80AB31aE (deployed on Sepolia testnet)
