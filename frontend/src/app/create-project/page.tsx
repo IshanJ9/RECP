@@ -8,7 +8,7 @@ import ProjectFactoryABI from "@/utils/abi/ProjectFactory.json";
 import ProjectABI from "@/utils/abi/Project.json";
 import { ethers } from "ethers";
 
-const PROJECT_FACTORY_ADDRESS = "0xBB613302b1d36db09D54fA63B2a6E499622D0282"; // Replace with your deployed address
+const PROJECT_FACTORY_ADDRESS = "0xeb93f5612E883b38e023b2b1943dEAb0B5395Bfc"; // Replace with your deployed address
 
 export default function CreateProjectPage() {
   const router = useRouter();
