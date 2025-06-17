@@ -1,432 +1,611 @@
 "use client"
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import ProjectFactoryABI from "@/utils/abi/ProjectFactory.json";
+import ProjectABI from "@/utils/abi/Project.json";
+import { ethers } from "ethers";
+
+const PROJECT_FACTORY_ADDRESS = "0xBB613302b1d36db09D54fA63B2a6E499622D0282"; // Replace with your deployed address
 
 export default function CreateProjectPage() {
   const router = useRouter();
-  
+  const [step, setStep] = useState(1);
+  const [deploying, setDeploying] = useState(false);
+  const [addingDetails, setAddingDetails] = useState(false);
+  const [deployedProjectAddress, setDeployedProjectAddress] = useState("");
   const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    category: '',
-    fundingStage: '',
-    location: '',
-    founded: '',
-    budget: '',
-    averageProjectTime: '',
-    founderName: '',
-    tagline: '',
-    detailText: '',
-    features: ['', '', '', ''],
-    mission: '',
-    energyStatus: '',
-    projectStatus: 'Not Started'
+    // Step 1 fields
+    name: "",
+    founderName: "",
+    budget: "",
+    duration: "",
+    proposalLimit: "",
+    investmentLimit: "",
+    // Step 2 fields
+    tokenName: "",
+    tokenSymbol: "",
+    supply: "",
+    description: "",
+    category: "",
   });
-
   const [errors, setErrors] = useState<Record<string, string>>({});
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const [unit, setUnit] = useState({
+    budget: "ETH",
+    proposalLimit: "ETH",
+    investmentLimit: "ETH",
+  });
+  // Handle input changes
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prevData => ({
-      ...prevData,
-      [name]: value
-    }));
-    
-    // Clear error when field is edited
+    setFormData((prev) => ({ ...prev, [name]: value }));
     if (errors[name]) {
-      setErrors(prev => {
-        const updated = {...prev};
+      setErrors((prev) => {
+        const updated = { ...prev };
         delete updated[name];
         return updated;
       });
     }
   };
-
-  const handleSelectChange = (name: string, value: string) => {
-    setFormData(prevData => ({
-      ...prevData,
-      [name]: value
-    }));
-    
-    // Clear error when field is edited
-    if (errors[name]) {
-      setErrors(prev => {
-        const updated = {...prev};
-        delete updated[name];
-        return updated;
-      });
-    }
+  // Helper to get decimals for ethers.parseUnits
+  const getDecimals = (u: string) => {
+    if (u === "ETH") return 18;
+    if (u === "GWEI") return 9;
+    if (u === "WEI") return 0;
+    return 18;
   };
 
-  const handleFeatureChange = (index: number, value: string) => {
-    const updatedFeatures = [...formData.features];
-    updatedFeatures[index] = value;
-    
-    setFormData(prevData => ({
-      ...prevData,
-      features: updatedFeatures
-    }));
-  };
-
-  const validateForm = () => {
-    const newErrors: Record<string, string> = {};
-    
-    // Required fields
-    const requiredFields = ['name', 'description', 'category', 'fundingStage', 'founderName', 'tagline'];
-    requiredFields.forEach(field => {
-      if (!formData[field as keyof typeof formData]) {
-        newErrors[field] = 'This field is required';
+  // Helper to safely parse units with better decimal handling
+  const safeParseUnits = (value: string, unit: string) => {
+    try {
+      // Ensure we have a valid number
+      const numValue = parseFloat(value || "0");
+      if (isNaN(numValue) || numValue < 0) {
+        return ethers.parseUnits("0", getDecimals(unit));
       }
-    });
-    
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (validateForm()) {
-      // Here you would typically send the data to an API
-      console.log('Form submitted:', formData);
-      
-      // For demo purposes, we'll just navigate back to the startups list
-      // In a real app, you'd wait for API response before redirecting
-      router.push('/startups');
+      // Convert to string with appropriate precision
+      const stringValue = numValue.toString();
+      return ethers.parseUnits(stringValue, getDecimals(unit));
+    } catch (error) {
+      console.warn(`Failed to parse ${value} ${unit}, using 0 instead:`, error);
+      return ethers.parseUnits("0", getDecimals(unit));
     }
   };
 
-  const categories = ['CleanTech', 'HealthTech', 'FinTech', 'Enterprise', 'EdTech', 'AI/ML'];
-  const fundingStages = ['Pre-seed', 'Seed', 'Series A', 'Series B', 'Series C', 'Growth'];
-  const energyStatuses = ['Wind Energy', 'High Priority', 'High Volume', 'Moderate Use', 'Low Energy'];
-  const projectStatuses = ['Not Started', 'In Progress', 'On Time', 'Delayed', 'Completed'];
+  const handleUnitChange = (field: string, value: string) => {
+    setUnit(prev => ({ ...prev, [field]: value }));
+  };
 
-  return (
-    <div className="container mx-auto p-4 max-w-4xl">
-      <h1 className="text-2xl font-bold mb-6">Create New Project</h1>
+  // Deploy project (Step 1)
+  const handleDeployProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setDeploying(true);
+    setErrors({});
+    try {
+      if (!(window as any).ethereum) throw new Error("No wallet found");
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const factory = new ethers.Contract(
+        PROJECT_FACTORY_ADDRESS,
+        ProjectFactoryABI,
+        signer
+      );      // Use parseUnits for conversion with safer parsing
+      const tx = await factory.createProject(
+        formData.name,
+        formData.founderName,
+        safeParseUnits(formData.budget, unit.budget),
+        Number(formData.duration) * 24 * 60 * 60, // days to seconds
+        safeParseUnits(formData.proposalLimit, unit.proposalLimit),
+        safeParseUnits(formData.investmentLimit, unit.investmentLimit)
+      );
+      const receipt = await tx.wait();
+      // Get the deployed project address from the event
+      const event = receipt.logs
+        .map((log: any) => {
+          try {
+            return factory.interface.parseLog(log);
+          } catch {
+            return null;
+          }
+        })
+        .find((e: any) => e && e.name === "ProjectCreated");
+      if (event) {
+        const projectId = event.args.projectId;
+        const projectAddress = await factory.projectIdToAddress(projectId);
+        setDeployedProjectAddress(projectAddress);
+        setStep(2);
+      } else {
+        setErrors({ general: "Could not get deployed project address." });
+      }
+    } catch (err: any) {
+      setErrors({ general: err.message || "Failed to deploy project" });
+    } finally {
+      setDeploying(false);
+    }
+  };
+
+  // Add project details (Step 2)
+  const handleAddDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAddingDetails(true);
+    setErrors({});
+    try {
+      if (!(window as any).ethereum) throw new Error("No wallet found");
+      if (!deployedProjectAddress) throw new Error("No deployed project address");
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const project = new ethers.Contract(
+        deployedProjectAddress,
+        ProjectABI,
+        signer
+      );
+      // Call addProjectDetails
+      const tx = await project.addProjectDetails(
+        formData.tokenName,
+        formData.tokenSymbol,
+        formData.supply,
+        formData.description,
+        formData.category
+      );
+      await tx.wait();
+      router.push("/dashboard");
+    } catch (err: any) {
+      setErrors({ general: err.message || "Failed to add project details" });
+    } finally {
+      setAddingDetails(false);
+    }
+  };
+  // Simple preview
+  const Preview = () => (
+    <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+      <h3 className="text-lg font-semibold text-gray-900 mb-4">Preview</h3>
       
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Basic Information */}
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Project Information</h2>
-            
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium mb-1">
-                Project Name*
-              </label>
-              <Input
-                id="name"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                className={errors.name ? "border-red-500" : ""}
-              />
-              {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
-            </div>
-            
-            <div>
-              <label htmlFor="description" className="block text-sm font-medium mb-1">
-                Short Description*
-              </label>
-              <Textarea
-                id="description"
-                name="description"
-                value={formData.description}
-                onChange={handleChange}
-                className={errors.description ? "border-red-500" : ""}
-                rows={3}
-              />
-              {errors.description && <p className="text-red-500 text-xs mt-1">{errors.description}</p>}
-            </div>
-            
-            <div>
-              <label htmlFor="category" className="block text-sm font-medium mb-1">
-                Category*
-              </label>
-              <Select 
-                name="category"
-                value={formData.category}
-                onValueChange={(value) => handleSelectChange("category", value)}
-              >
-                <SelectTrigger className={errors.category ? "border-red-500" : ""}>
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map((category) => (
-                    <SelectItem key={category} value={category}>{category}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.category && <p className="text-red-500 text-xs mt-1">{errors.category}</p>}
-            </div>
-            
-            <div>
-              <label htmlFor="fundingStage" className="block text-sm font-medium mb-1">
-                Funding Stage*
-              </label>
-              <Select 
-                name="fundingStage"
-                value={formData.fundingStage}
-                onValueChange={(value) => handleSelectChange("fundingStage", value)}
-              >
-                <SelectTrigger className={errors.fundingStage ? "border-red-500" : ""}>
-                  <SelectValue placeholder="Select funding stage" />
-                </SelectTrigger>
-                <SelectContent>
-                  {fundingStages.map((stage) => (
-                    <SelectItem key={stage} value={stage}>{stage}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.fundingStage && <p className="text-red-500 text-xs mt-1">{errors.fundingStage}</p>}
-            </div>
+      {/* Project Card Preview */}
+      <div className="bg-gradient-to-br from-gray-50/50 to-white border border-gray-200 rounded-xl p-4 mb-4">
+        <div className="flex items-start justify-between mb-3">
+          <div className="px-3 py-1 text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200 rounded-full">
+            {formData.category || 'Category'}
           </div>
-          
-          {/* Additional Information */}
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Additional Details</h2>
-            
-            <div>
-              <label htmlFor="location" className="block text-sm font-medium mb-1">
-                Location
-              </label>
-              <Input
-                id="location"
-                name="location"
-                value={formData.location}
-                onChange={handleChange}
-              />
+          <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+        </div>
+        
+        <h4 className="text-lg font-semibold text-gray-900 mb-1">
+          {formData.name || 'Project Name'}
+        </h4>
+        <p className="text-sm text-gray-500 mb-3">by {formData.founderName || 'Founder'}</p>
+        
+        <p className="text-sm text-gray-600 mb-4 line-clamp-2">
+          {formData.description || 'Project description will appear here...'}
+        </p>
+        
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="text-center p-2 bg-gray-50 rounded-lg">
+            <div className="text-sm font-bold text-gray-900">
+              {formData.budget || '0'} {unit.budget}
             </div>
-            
-            <div>
-              <label htmlFor="founded" className="block text-sm font-medium mb-1">
-                Founded Year
-              </label>
-              <Input
-                id="founded"
-                name="founded"
-                value={formData.founded}
-                onChange={handleChange}
-                placeholder="e.g., 2023"
-              />
+            <div className="text-xs text-gray-500">Budget</div>
+          </div>
+          <div className="text-center p-2 bg-gray-50 rounded-lg">
+            <div className="text-sm font-bold text-gray-900">
+              {formData.duration || '0'} days
             </div>
-            
-            <div>
-              <label htmlFor="budget" className="block text-sm font-medium mb-1">
-                Budget
-              </label>
-              <Input
-                id="budget"
-                name="budget"
-                value={formData.budget}
-                onChange={handleChange}
-                placeholder="e.g., $5M"
-              />
-            </div>
-            
-            <div>
-              <label htmlFor="averageProjectTime" className="block text-sm font-medium mb-1">
-                Average Project Time
-              </label>
-              <Input
-                id="averageProjectTime"
-                name="averageProjectTime"
-                value={formData.averageProjectTime}
-                onChange={handleChange}
-                placeholder="e.g., 6-9 months"
-              />
-            </div>
+            <div className="text-xs text-gray-500">Duration</div>
           </div>
         </div>
         
-        {/* Founder Information */}
-        <div className="pt-4 border-t">
-          <h2 className="text-xl font-semibold mb-4">Founder Information</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label htmlFor="founderName" className="block text-sm font-medium mb-1">
-                Founder Name*
-              </label>
-              <Input
-                id="founderName"
-                name="founderName"
-                value={formData.founderName}
-                onChange={handleChange}
-                className={errors.founderName ? "border-red-500" : ""}
-              />
-              {errors.founderName && <p className="text-red-500 text-xs mt-1">{errors.founderName}</p>}
-            </div>
+        <div className="w-full bg-gray-900 text-white py-2 rounded-lg text-sm font-medium text-center">
+          View Details
+        </div>
+      </div>
+
+      {/* Project Details */}
+      <div className="space-y-3">
+        <h4 className="text-sm font-semibold text-gray-900">Project Information</h4>
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-gray-600">Name:</span>
+            <span className="font-medium text-gray-900">{formData.name || 'Not set'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600">Founder:</span>
+            <span className="font-medium text-gray-900">{formData.founderName || 'Not set'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600">Budget:</span>
+            <span className="font-medium text-gray-900">{formData.budget || '0'} {unit.budget}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600">Duration:</span>
+            <span className="font-medium text-gray-900">{formData.duration || '0'} days</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600">Proposal Limit:</span>
+            <span className="font-medium text-gray-900">{formData.proposalLimit || '0'} {unit.proposalLimit}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600">Investment Limit:</span>
+            <span className="font-medium text-gray-900">{formData.investmentLimit || '0'} {unit.investmentLimit}</span>
           </div>
         </div>
-        
-        {/* Project Details */}
-        <div className="pt-4 border-t">
-          <h2 className="text-xl font-semibold mb-4">Project Details</h2>
-          
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="tagline" className="block text-sm font-medium mb-1">
-                Tagline* <span className="text-gray-400 text-xs">(Start with "is a..." since it follows the project name)</span>
-              </label>
-              <Input
-                id="tagline"
-                name="tagline"
-                value={formData.tagline}
-                onChange={handleChange}
-                placeholder="is an innovative platform designed for..."
-                className={errors.tagline ? "border-red-500" : ""}
-              />
-              {errors.tagline && <p className="text-red-500 text-xs mt-1">{errors.tagline}</p>}
-            </div>
-            
-            <div>
-              <label htmlFor="detailText" className="block text-sm font-medium mb-1">
-                Detailed Description
-              </label>
-              <Textarea
-                id="detailText"
-                name="detailText"
-                value={formData.detailText}
-                onChange={handleChange}
-                rows={5}
-                placeholder="Provide a detailed explanation of your project..."
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Key Features
-              </label>
-              <div className="space-y-2">
-                {formData.features.map((feature, index) => (
-                  <Input
-                    key={index}
-                    value={feature}
-                    onChange={(e) => handleFeatureChange(index, e.target.value)}
-                    placeholder={`Feature ${index + 1}`}
-                  />
-                ))}
+
+        {step === 2 && (
+          <>
+            <div className="border-t border-gray-200 pt-3 mt-4">
+              <h4 className="text-sm font-semibold text-gray-900 mb-2">Token & DAO Details</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Token Name:</span>
+                  <span className="font-medium text-gray-900">{formData.tokenName || 'Not set'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Token Symbol:</span>
+                  <span className="font-medium text-gray-900">{formData.tokenSymbol || 'Not set'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Supply:</span>
+                  <span className="font-medium text-gray-900">{formData.supply || '0'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Category:</span>
+                  <span className="font-medium text-gray-900">{formData.category || 'Not set'}</span>
+                </div>
               </div>
             </div>
-            
-            <div>
-              <label htmlFor="mission" className="block text-sm font-medium mb-1">
-                Mission Statement
-              </label>
-              <Textarea
-                id="mission"
-                name="mission"
-                value={formData.mission}
-                onChange={handleChange}
-                rows={2}
-                placeholder="Our mission is simple: ..."
-              />
-            </div>
-          </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="container mx-auto px-6 py-6">
+          <Button 
+            variant="ghost" 
+            onClick={() => router.push('/dashboard')}
+            className="mb-4 text-gray-600 hover:text-gray-900"
+          >
+            ← Back to Dashboard
+          </Button>
+          <h1 className="text-3xl font-bold text-gray-900">Create New Project</h1>
+          <p className="text-gray-600 mt-2">
+            {step === 1 ? "Deploy your project smart contract" : "Add project details and create DAO"}
+          </p>
         </div>
-        
-        {/* Status Information */}
-        <div className="pt-4 border-t">
-          <h2 className="text-xl font-semibold mb-4">Status Information</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label htmlFor="energyStatus" className="block text-sm font-medium mb-1">
-                Energy Status
-              </label>
-              <Select 
-                name="energyStatus"
-                value={formData.energyStatus}
-                onValueChange={(value) => handleSelectChange("energyStatus", value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select energy status" />
-                </SelectTrigger>
-                <SelectContent>
-                  {energyStatuses.map((status) => (
-                    <SelectItem key={status} value={status}>{status}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div>
-              <label htmlFor="projectStatus" className="block text-sm font-medium mb-1">
-                Project Status
-              </label>
-              <Select 
-                name="projectStatus"
-                value={formData.projectStatus}
-                onValueChange={(value) => handleSelectChange("projectStatus", value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select project status" />
-                </SelectTrigger>
-                <SelectContent>
-                  {projectStatuses.map((status) => (
-                    <SelectItem key={status} value={status}>{status}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </div>
-        
-        {/* Preview section */}
-        <div className="pt-6 border-t">
-          <h2 className="text-xl font-semibold mb-4">Preview</h2>
-          
-          <div className="bg-gray-50 p-4 rounded-lg">
-            {formData.name && (
-              <div className="mb-4">
-                <h3 className="font-bold text-lg">{formData.name}</h3>
-                {formData.tagline && (
-                  <p>{formData.name} {formData.tagline}</p>
-                )}
+      </div>
+
+      {/* Main Content */}
+      <div className="container mx-auto px-6 py-8">
+        <div className="max-w-4xl mx-auto">
+          {/* Progress Indicator */}
+          <div className="flex items-center justify-center mb-8">
+            <div className="flex items-center space-x-4">
+              <div className={`flex items-center justify-center w-10 h-10 rounded-full ${step >= 1 ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-500'}`}>
+                1
               </div>
-            )}
-            
-            {formData.description && (
-              <p className="mb-4 text-gray-700">{formData.description}</p>
-            )}
-            
-            <div className="flex flex-wrap gap-2 mb-4">
-              {formData.category && (
-                <Badge variant="outline" className="bg-blue-50 text-blue-700">
-                  {formData.category}
-                </Badge>
+              <div className={`w-16 h-1 ${step >= 2 ? 'bg-gray-900' : 'bg-gray-200'}`}></div>
+              <div className={`flex items-center justify-center w-10 h-10 rounded-full ${step >= 2 ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-500'}`}>
+                2
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Form Section */}
+            <div className="lg:col-span-2">
+              {step === 1 && (
+                <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-200">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="w-8 h-8 bg-gray-900 rounded-lg flex items-center justify-center">
+                      <span className="text-white text-sm font-bold">1</span>
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-semibold text-gray-900">Deploy Project Contract</h2>
+                      <p className="text-sm text-gray-600">Set up the basic project parameters</p>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleDeployProject} className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Project Name</label>
+                        <Input 
+                          name="name" 
+                          placeholder="Enter project name" 
+                          value={formData.name} 
+                          onChange={handleChange} 
+                          required 
+                          className="rounded-xl"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Founder Name</label>
+                        <Input 
+                          name="founderName" 
+                          placeholder="Enter founder name" 
+                          value={formData.founderName} 
+                          onChange={handleChange} 
+                          required 
+                          className="rounded-xl"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="flex gap-4">                        <div className="flex-1">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Budget</label>
+                          <Input 
+                            name="budget" 
+                            placeholder="0.01" 
+                            value={formData.budget} 
+                            onChange={handleChange} 
+                            required 
+                            type="number" 
+                            min="0" 
+                            step="any"
+                            className="rounded-xl"
+                          />
+                        </div>
+                        <div className="w-24">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Unit</label>
+                          <select 
+                            value={unit.budget} 
+                            onChange={e => handleUnitChange("budget", e.target.value)} 
+                            className="w-full px-3 py-2 rounded-xl border border-gray-300 bg-white text-sm"
+                          >
+                            <option value="ETH">ETH</option>
+                            <option value="GWEI">GWEI</option>
+                            <option value="WEI">WEI</option>                          </select>
+                        </div>
+                      </div>
+                      
+                      {/* Helper text for budget conversion */}
+                      {formData.budget && !isNaN(parseFloat(formData.budget)) && parseFloat(formData.budget) > 0 && (
+                        <div className="text-xs text-gray-500 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium">💡 Conversion Help:</span>
+                          </div>
+                          <div>
+                            {unit.budget === "ETH" && (
+                              <span>
+                                {formData.budget} ETH = {(parseFloat(formData.budget) * 1e18).toLocaleString()} WEI
+                                {parseFloat(formData.budget) < 1 && " • For small amounts, consider using WEI unit"}
+                              </span>
+                            )}
+                            {unit.budget === "GWEI" && (
+                              <span>
+                                {formData.budget} GWEI = {(parseFloat(formData.budget) * 1e-9).toFixed(9)} ETH = {(parseFloat(formData.budget) * 1e9).toLocaleString()} WEI
+                              </span>
+                            )}
+                            {unit.budget === "WEI" && (
+                              <span>
+                                {formData.budget} WEI = {(parseFloat(formData.budget) * 1e-18).toFixed(18)} ETH
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Duration (days)</label>
+                        <Input 
+                          name="duration" 
+                          placeholder="30" 
+                          value={formData.duration} 
+                          onChange={handleChange} 
+                          required 
+                          type="number" 
+                          min="1" 
+                          className="rounded-xl"
+                        />
+                      </div>
+
+                      <div className="flex gap-4">                        <div className="flex-1">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Proposal Limit</label>
+                          <Input 
+                            name="proposalLimit" 
+                            placeholder="0.01" 
+                            value={formData.proposalLimit} 
+                            onChange={handleChange} 
+                            required 
+                            type="number" 
+                            min="0" 
+                            step="any"
+                            className="rounded-xl"
+                          />
+                        </div>
+                        <div className="w-24">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Unit</label>
+                          <select 
+                            value={unit.proposalLimit} 
+                            onChange={e => handleUnitChange("proposalLimit", e.target.value)} 
+                            className="w-full px-3 py-2 rounded-xl border border-gray-300 bg-white text-sm"
+                          >
+                            <option value="ETH">ETH</option>
+                            <option value="GWEI">GWEI</option>
+                            <option value="WEI">WEI</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-4">                        <div className="flex-1">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Investment Limit</label>
+                          <Input 
+                            name="investmentLimit" 
+                            placeholder="0.01" 
+                            value={formData.investmentLimit} 
+                            onChange={handleChange} 
+                            required 
+                            type="number" 
+                            min="0" 
+                            step="any"
+                            className="rounded-xl"
+                          />
+                        </div>
+                        <div className="w-24">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Unit</label>
+                          <select 
+                            value={unit.investmentLimit} 
+                            onChange={e => handleUnitChange("investmentLimit", e.target.value)} 
+                            className="w-full px-3 py-2 rounded-xl border border-gray-300 bg-white text-sm"
+                          >
+                            <option value="ETH">ETH</option>
+                            <option value="GWEI">GWEI</option>
+                            <option value="WEI">WEI</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {errors.general && (
+                      <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
+                        {errors.general}
+                      </div>
+                    )}
+
+                    <Button 
+                      type="submit" 
+                      className="w-full bg-gray-900 hover:bg-black text-white py-3 rounded-xl font-medium transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]" 
+                      disabled={deploying}
+                    >
+                      {deploying ? (
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          Deploying Contract...
+                        </div>
+                      ) : (
+                        "Deploy Project Contract"
+                      )}
+                    </Button>
+                  </form>
+                </div>
               )}
-              {formData.fundingStage && (
-                <Badge variant="outline" className="bg-purple-50 text-purple-700">
-                  {formData.fundingStage}
-                </Badge>
+
+              {step === 2 && (
+                <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-200">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                      <span className="text-white text-sm font-bold">2</span>
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-semibold text-gray-900">Project Details & DAO Setup</h2>
+                      <p className="text-sm text-gray-600">Configure token and project information</p>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleAddDetails} className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Token Name</label>
+                        <Input 
+                          name="tokenName" 
+                          placeholder="Project Token" 
+                          value={formData.tokenName} 
+                          onChange={handleChange} 
+                          required 
+                          className="rounded-xl"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Token Symbol</label>
+                        <Input 
+                          name="tokenSymbol" 
+                          placeholder="PTK" 
+                          value={formData.tokenSymbol} 
+                          onChange={handleChange} 
+                          required 
+                          className="rounded-xl"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Token Supply</label>
+                      <Input 
+                        name="supply" 
+                        placeholder="1000" 
+                        value={formData.supply} 
+                        onChange={handleChange} 
+                        required 
+                        type="number" 
+                        min="1" 
+                        className="rounded-xl"
+                      />
+                    </div>                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                      <select
+                        name="category"
+                        value={formData.category}
+                        onChange={handleChange}
+                        required
+                        className="w-full px-3 py-2 rounded-xl border border-gray-300 bg-white text-sm"
+                      >
+                        <option value="">Select a renewable energy category</option>
+                        <option value="Solar Energy">Solar Energy</option>
+                        <option value="Wind Energy">Wind Energy</option>
+                        <option value="Hydroelectric">Hydroelectric</option>
+                        <option value="Geothermal">Geothermal</option>
+                        <option value="Biomass">Biomass</option>
+                        <option value="Ocean Energy">Ocean Energy</option>
+                        <option value="Green Hydrogen">Green Hydrogen</option>
+                        <option value="Energy Storage">Energy Storage</option>
+                        <option value="Smart Grid">Smart Grid</option>
+                        <option value="Carbon Capture">Carbon Capture</option>
+                        <option value="Sustainable Transport">Sustainable Transport</option>
+                        <option value="Energy Efficiency">Energy Efficiency</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                      <textarea 
+                        name="description" 
+                        placeholder="Describe your project and its goals..." 
+                        value={formData.description} 
+                        onChange={handleChange} 
+                        required 
+                        rows={4}
+                        className="w-full px-3 py-2 rounded-xl border border-gray-300 resize-none"
+                      />
+                    </div>
+
+                    {errors.general && (
+                      <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
+                        {errors.general}
+                      </div>
+                    )}
+
+                    <Button 
+                      type="submit" 
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-medium transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]" 
+                      disabled={addingDetails}
+                    >
+                      {addingDetails ? (
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          Creating DAO...
+                        </div>
+                      ) : (
+                        "Complete Project Setup"
+                      )}
+                    </Button>
+                  </form>
+                </div>
               )}
-              {formData.projectStatus && (
-                <Badge variant="outline" className="bg-green-50 text-green-700">
-                  {formData.projectStatus}
-                </Badge>
-              )}
+            </div>
+
+            {/* Preview Section */}
+            <div className="lg:col-span-1">
+              <div className="sticky top-8">
+                <Preview />
+              </div>
             </div>
           </div>
         </div>
-        
-        {/* Form actions */}
-        <div className="flex justify-end gap-4 pt-6">
-          <Button type="button" variant="outline" onClick={() => router.push('/startup')}>
-            Cancel
-          </Button>
-          <Button type="submit">
-            Create Project
-          </Button>
-        </div>
-      </form>
+      </div>
     </div>
   );
 }

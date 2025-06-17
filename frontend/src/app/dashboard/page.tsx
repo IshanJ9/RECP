@@ -202,32 +202,50 @@ const StartupsPage = () => {
     
     fetchProjects();
   }, [projects.length, setProjects]);
-
-  const categories = ["All", ...Array.from(new Set(projects.map(p => p.category)))];
+  // Default renewable energy categories
+  const defaultCategories = [
+    "All",
+    "Solar Energy",
+    "Wind Energy", 
+    "Hydroelectric",
+    "Geothermal",
+    "Biomass",
+    "Ocean Energy",
+    "Green Hydrogen",
+    "Energy Storage",
+    "Smart Grid",
+    "Carbon Capture",
+    "Sustainable Transport",
+    "Energy Efficiency"
+  ];
+  
+  // Combine default categories with any additional categories from projects
+  const projectCategories = Array.from(new Set(projects.map(p => p.category)));
+  const additionalCategories = projectCategories.filter(cat => !defaultCategories.includes(cat));
+  const categories = [...defaultCategories, ...additionalCategories];
+  
   const filteredProjects = projects.filter(p => selectedCategory === "All" || p.category === selectedCategory);
 
   const handleViewDetails = (projectId: string) => {
     router.push(`/startup/${projectId}`);
   };
-
   return (
     <div className="p-8">
-      <h1 className="text-4xl font-bold mb-8">Projects</h1>
-      <div className="mb-8 space-y-4">
-        <div>
-          <h2 className="text-xl font-semibold mb-2">Categories</h2>
-          <div className="flex flex-wrap gap-2">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-4xl font-bold">Projects</h1>
+        <div className="flex items-center gap-4">
+          <span className="text-sm font-medium text-gray-600">Filter:</span>
+          <select 
+            value={selectedCategory} 
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+          >
             {categories.map(category => (
-              <Button
-                key={category}
-                variant={selectedCategory === category ? "default" : "outline"}
-                onClick={() => setSelectedCategory(category)}
-                className="mr-2"
-              >
+              <option key={category} value={category}>
                 {category}
-              </Button>
+              </option>
             ))}
-          </div>
+          </select>
         </div>
       </div>
       {loading ? (
