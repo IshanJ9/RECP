@@ -14,10 +14,10 @@ contract Project is Ownable {
     uint256 public immutable budget;
     uint256 public immutable investmentLimit;
     uint256 public currentInvestedAmount;
-    address private tokenAddress;
+    address public tokenAddress;
     uint256 public immutable proposalLimit;
     uint256 public tokenGivenToEveryone;
-    uint256 public immutable duration;
+    uint256 public  immutable duration;
     string public description;
     string public category;
 
@@ -27,7 +27,7 @@ contract Project is Ownable {
     uint public totalFundsWithdrawn = 0;
     bool internal isDaoCreated = false;
     uint256 public startTime = 0;
-    bool internal isActive = true;
+    bool public isActive = true;
 
 
     event investmentMade(
@@ -36,7 +36,6 @@ contract Project is Ownable {
         address userWallet,
         uint256 investedAmount
     );
-
 
     event MemberAddedToDAO(
         uint256 indexed projectId,
@@ -60,7 +59,6 @@ contract Project is Ownable {
         uint256 indexed proposalId,
         bool result
     );
-    // Add an event for fund withdrawal
     event FundsWithdrawn(
         uint256 indexed proposalId,
         uint256 amountWithdrawn,
@@ -234,7 +232,6 @@ contract Project is Ownable {
             emit FundsWithdrawn(_proposalId, selectedProposal.fundsNeeded, msg.sender);
         }
     }
-
 
     function addUsertoDao(string memory userName,address userWallet) internal {
         totalUser++;
