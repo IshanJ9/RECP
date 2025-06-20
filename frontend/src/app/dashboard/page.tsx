@@ -10,7 +10,7 @@ import ProjectFactoryABI from "@/utils/abi/ProjectFactory.json";
 import ProjectABI from "@/utils/abi/Project.json";
 import { useProjectStore } from '@/store/projectStore';
 
-const PROJECT_FACTORY_ADDRESS = "0xeb93f5612E883b38e023b2b1943dEAb0B5395Bfc"; // Replace with your deployed address
+const PROJECT_FACTORY_ADDRESS = process.env.NEXT_PUBLIC_PROJECT_FACTORY_ADDRESS || "0xeb93f5612E883b38e023b2b1943dEAb0B5395Bfc";
 
 const StartupsPage = () => {
   const [loading, setLoading] = useState(true);
