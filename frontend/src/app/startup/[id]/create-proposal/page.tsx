@@ -2,10 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { useProjectStore } from '@/store/projectStore';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { useProjectStore } from "@/store/projectStore";
 import { ethers } from "ethers";
 import ProjectABI from "@/utils/abi/Project.json";
 import dynamic from 'next/dynamic';
@@ -47,6 +48,7 @@ export default function CreateProposalPage() {
   const [errors, setErrors] = useState<Partial<CreateProposalFormData>>({});
   const [currentInvestedAmount, setCurrentInvestedAmount] = useState<string>("0");
   const [totalVotingTokens, setTotalVotingTokens] = useState<string>("0");
+  const [fundsNeededUnit, setFundsNeededUnit] = useState<"ETH" | "wei" | "gwei">("ETH");
 
   // Check if current user is the founder and fetch contract limits
   useEffect(() => {
@@ -123,13 +125,33 @@ export default function CreateProposalPage() {
       newErrors.votingThreshold = `Voting threshold must be between 1 and ${totalVotingTokens} tokens`;
     }
 
-    if (!formData.fundsNeeded || Number(formData.fundsNeeded) <= 0) {
+    if (!formData.fundsNeeded.trim()) {
+      newErrors.fundsNeeded = 'Funds needed are required';
+    } else if (isNaN(Number(formData.fundsNeeded))) {
+      newErrors.fundsNeeded = 'Funds needed must be a valid number';
+    } else if (Number(formData.fundsNeeded) <= 0) {
       newErrors.fundsNeeded = 'Funds needed must be greater than 0';
-    }
+    } else if ((fundsNeededUnit === 'wei' || fundsNeededUnit === 'gwei') && formData.fundsNeeded.includes('.')) {
+      newErrors.fundsNeeded = `Value for ${fundsNeededUnit} cannot be a decimal.`;
+    } else {
+      try {
+        let fundsNeededWei;
+        if (fundsNeededUnit === 'ETH') {
+          fundsNeededWei = ethers.parseEther(formData.fundsNeeded);
+        } else if (fundsNeededUnit === 'gwei') {
+          fundsNeededWei = ethers.parseUnits(formData.fundsNeeded, 'gwei');
+        } else { // wei
+          fundsNeededWei = BigInt(formData.fundsNeeded);
+        }
+        
+        const currentInvestedWei = ethers.parseEther(currentInvestedAmount);
 
-    // Validate funds needed against current invested amount
-    if (formData.fundsNeeded && Number(formData.fundsNeeded) > Number(currentInvestedAmount)) {
-      newErrors.fundsNeeded = `Funds needed cannot exceed current invested amount of ${currentInvestedAmount} ETH`;
+        if (fundsNeededWei > currentInvestedWei) {
+          newErrors.fundsNeeded = `Funds needed cannot exceed current invested amount of ${currentInvestedAmount} ETH`;
+        }
+      } catch (e) {
+        newErrors.fundsNeeded = 'Invalid number format for the selected unit.';
+      }
     }
 
     if (!formData.beginningTime) {
@@ -177,12 +199,20 @@ export default function CreateProposalPage() {
       const signer = await provider.getSigner();
       const contract = new ethers.Contract(project!.address, ProjectABI, signer);
 
-      // Convert times to timestamps
-      const beginningTimestamp = Math.floor(new Date(formData.beginningTime).getTime() / 1000);
-      const endingTimestamp = Math.floor(new Date(formData.endingTime).getTime() / 1000);
+      // Convert times to durations from now in seconds, as expected by the smart contract
+      const now = Date.now();
+      const beginningTimestamp = Math.floor((new Date(formData.beginningTime).getTime() - now) / 1000);
+      const endingTimestamp = Math.floor((new Date(formData.endingTime).getTime() - now) / 1000);
 
       // Convert funds needed to Wei
-      const fundsNeededWei = ethers.parseEther(formData.fundsNeeded);
+      let fundsNeededWei;
+      if (fundsNeededUnit === 'ETH') {
+        fundsNeededWei = ethers.parseEther(formData.fundsNeeded);
+      } else if (fundsNeededUnit === 'gwei') {
+        fundsNeededWei = ethers.parseUnits(formData.fundsNeeded, 'gwei');
+      } else {
+        fundsNeededWei = BigInt(formData.fundsNeeded);
+      }
 
       // Call the contract function
       const tx = await contract.createProposal(
@@ -232,14 +262,33 @@ export default function CreateProposalPage() {
     }
     
     // Real-time validation for specific fields
-    if (field === 'fundsNeeded' && typeof value === 'string' && value !== '') {
-      const fundsValue = Number(value);
-      const investedValue = Number(currentInvestedAmount);
-      if (fundsValue > investedValue && investedValue > 0) {
+    if (field === 'fundsNeeded' && typeof value === 'string' && value.trim() !== '') {
+      if ((fundsNeededUnit === 'wei' || fundsNeededUnit === 'gwei') && value.includes('.')) {
         setErrors(prev => ({
           ...prev,
-          fundsNeeded: `Funds needed cannot exceed current invested amount of ${currentInvestedAmount} ETH`
+          fundsNeeded: `Value for ${fundsNeededUnit} cannot be a decimal.`
         }));
+        return;
+      }
+
+      try {
+        let fundsNeededWei;
+        if (fundsNeededUnit === 'ETH') {
+          fundsNeededWei = ethers.parseEther(value);
+        } else if (fundsNeededUnit === 'gwei') {
+          fundsNeededWei = ethers.parseUnits(value, 'gwei');
+        } else { // wei
+          fundsNeededWei = BigInt(value);
+        }
+        const investedWei = ethers.parseEther(currentInvestedAmount);
+        if (investedWei > 0 && fundsNeededWei > investedWei) {
+          setErrors(prev => ({
+            ...prev,
+            fundsNeeded: `Funds needed cannot exceed current invested amount of ${currentInvestedAmount} ETH`
+          }));
+        }
+      } catch (e) {
+        // Ignore parsing errors during input
       }
     }
     
@@ -381,33 +430,33 @@ export default function CreateProposalPage() {
 
                 <div>
                   <Label htmlFor="fundsNeeded" className="text-sm font-medium text-gray-700 mb-2 block">
-                    Funds Needed (ETH) *
+                    Funds Needed *
                   </Label>
-                  <Input
-                    id="fundsNeeded"
-                    type="number"
-                    step="0.001"
-                    min="0"
-                    max={currentInvestedAmount}
-                    value={formData.fundsNeeded}
-                    onChange={(e) => handleInputChange('fundsNeeded', e.target.value)}
-                    placeholder="e.g., 1.5"
-                    className={`w-full ${
-                      formData.fundsNeeded && Number(formData.fundsNeeded) > Number(currentInvestedAmount) * 0.8
-                        ? 'border-yellow-300 focus:border-yellow-500'
-                        : ''
-                    }`}
-                  />
+                  <div className="flex items-center space-x-2">
+                    <Input
+                      id="fundsNeeded"
+                      type="text"
+                      value={formData.fundsNeeded}
+                      onChange={(e) => handleInputChange('fundsNeeded', e.target.value)}
+                      placeholder="e.g., 0.1"
+                      className="w-full"
+                    />
+                    <Select value={fundsNeededUnit} onValueChange={(value: 'ETH' | 'wei' | 'gwei') => setFundsNeededUnit(value)}>
+                      <SelectTrigger className="w-[120px]">
+                        <SelectValue placeholder="Unit" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ETH">ETH</SelectItem>
+                        <SelectItem value="wei">wei</SelectItem>
+                        <SelectItem value="gwei">gwei</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                   {errors.fundsNeeded && (
                     <p className="text-red-500 text-sm mt-1">{errors.fundsNeeded}</p>
                   )}
-                  <p className="text-gray-500 text-sm mt-1">
-
-                    {currentInvestedAmount && (
-                      <span className="block text-xs text-blue-600 mt-1">
-                        Current invested amount: {currentInvestedAmount} ETH
-                      </span>
-                    )}
+                   <p className="text-gray-500 text-sm mt-2">
+                    Available to request: {currentInvestedAmount} ETH
                   </p>
                 </div>
               </div>
