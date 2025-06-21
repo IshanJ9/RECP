@@ -300,10 +300,12 @@ const StartupsPage = () => {
             ))}
           </select>
         </div>
-      </div>
-      {loading ? (
-        <div>Loading projects...</div>
-      ) : (        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      </div>      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <span className="ml-3 text-gray-600">Loading projects...</span>
+        </div>
+      ) : (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredProjects.map(project => (
             <Card key={project.id} className="group relative overflow-hidden border-0 bg-white shadow-sm hover:shadow-xl transition-all duration-300 rounded-2xl">
               {/* Subtle gradient background */}

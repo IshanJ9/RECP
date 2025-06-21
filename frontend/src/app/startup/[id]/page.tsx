@@ -27,10 +27,9 @@ export default function StartupDetailPage() {
   const [investmentAmount, setInvestmentAmount] = useState<string>("");
   const [isInvesting, setIsInvesting] = useState(false);  const [connectedAddress, setConnectedAddress] = useState<string>("");  const [userName, setUserName] = useState<string>("");
   const [totalRaised, setTotalRaised] = useState<string>("0");
-  const [currentAmount, setCurrentAmount] = useState<string>("0");  const [totalWithdrawn, setTotalWithdrawn] = useState<string>("0");
-  const [isLoadingStats, setIsLoadingStats] = useState(true);
-  const [hasActiveProposals, setHasActiveProposals] = useState(false);
-  const [isCheckingProposals, setIsCheckingProposals] = useState(true);const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [currentAmount, setCurrentAmount] = useState<string>("0");
+  const [totalWithdrawn, setTotalWithdrawn] = useState<string>("0");
+  const [isLoadingStats, setIsLoadingStats] = useState(true);const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [toastFadingOut, setToastFadingOut] = useState(false);  const [projectCopyTooltip, setProjectCopyTooltip] = useState<string>("Copy project address");
   const [ownerCopyTooltip, setOwnerCopyTooltip] = useState<string>("Copy owner address");
   const [showProjectTooltip, setShowProjectTooltip] = useState(false);
@@ -165,37 +164,10 @@ export default function StartupDetailPage() {
           // Calculate current amount (total invested - total withdrawn)
           const currentAmountValue = parseFloat(currentInvestedEth) - parseFloat(totalWithdrawnEth);
           setCurrentAmount(currentAmountValue.toString());
-            console.log("Got total raised from currentInvestedAmount:", currentInvestedEth);
+          
+          console.log("Got total raised from currentInvestedAmount:", currentInvestedEth);
           console.log("Got total withdrawn:", totalWithdrawnEth);
           console.log("Current amount in project:", currentAmountValue);
-          
-          // Check for active proposals
-          try {
-            const totalProposals = await contract.totalProposals();
-            const currentTime = Math.floor(Date.now() / 1000);
-            let activeProposalsFound = false;
-            
-            for (let i = 1; i <= totalProposals; i++) {
-              try {
-                const proposal = await contract.proposalIdtoProposal(i);
-                const resultCalculated = await contract.proposalToResultCalculated(i);
-                
-                // Check if proposal is active (not expired and result not calculated)
-                if (currentTime < proposal.endingTime && !resultCalculated) {
-                  activeProposalsFound = true;
-                  break;
-                }
-              } catch (proposalError) {
-                console.log(`Error checking proposal ${i}:`, proposalError);
-              }
-            }
-            
-            setHasActiveProposals(activeProposalsFound);
-            console.log("Active proposals found:", activeProposalsFound);
-          } catch (proposalError) {
-            console.log("Error checking proposals:", proposalError);
-            setHasActiveProposals(false);
-          }
         } catch (error1) {
           console.log("currentInvestedAmount failed, trying contract balance:", error1);
           try {
@@ -215,9 +187,9 @@ export default function StartupDetailPage() {
         }
       } catch (error) {
         console.error("Error fetching project stats:", error);
-        setTotalRaised("0");      } finally {
+        setTotalRaised("0");
+      } finally {
         setIsLoadingStats(false);
-        setIsCheckingProposals(false);
       }
     };
     
@@ -392,8 +364,8 @@ export default function StartupDetailPage() {
       </div>
     );
   }  return (
-    <div className="min-h-screen bg-gray-50">      {/* Header */}
-      <div className="bg-white border-b border-gray-200">        <div className="container mx-auto px-4 sm:px-6 py-6">
+    <div className="min-h-screen bg-gray-50 px-5">      {/* Header */}
+      <div className="bg-white border-b border-gray-200 rounded-2xl shadow-sm ">        <div className="container mx-auto px-4 sm:px-6 py-6">
           <Button 
             variant="ghost" 
             onClick={() => router.push('/dashboard')}
@@ -581,8 +553,9 @@ export default function StartupDetailPage() {
             </div>
           )}
         </div>
-      </div>      {/* Main Content */}
-      <div className="container mx-auto px-4 sm:px-6 py-8">
+      </div>  
+          {/* Main Content */}
+      <div className="container mx-auto px-10 sm:px-0 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Left Column - Project Details */}
           <div className="lg:col-span-3 space-y-6">
@@ -685,26 +658,17 @@ export default function StartupDetailPage() {
                   <span className="font-semibold text-gray-900 text-sm">{project.investmentLimit} ETH</span>
                 </div>
               </div>
-            </div>            {/* Quick Actions Card */}
+            </div>
+
+            {/* Quick Actions Card */}
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 w-full">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">Quick Actions</h3>
-                {hasActiveProposals && !isCheckingProposals && (
-                  <div className="flex items-center gap-1 px-2 py-1 bg-green-500 text-white text-xs font-medium rounded-full shadow-sm">
-                    <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                    Active
-                  </div>
-                )}
-              </div>
-              
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
               <div className="space-y-3">
                 <Button 
                   variant="outline" 
                   className="w-full border-gray-200 text-gray-700 hover:bg-gray-50 py-3 rounded-xl font-medium"
                   onClick={() => router.push(`/startup/${project.id}/proposals`)}
-                >
-                  🗳️ View Proposals
-                  
+                >                  🗳️ View Proposals
                 </Button>
               </div>
             </div>

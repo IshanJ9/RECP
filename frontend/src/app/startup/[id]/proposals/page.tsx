@@ -23,6 +23,7 @@ interface Proposal {
   beginningTime: number;
   endingTime: number;
   voteOnce: boolean;
+  isResultCalculated?: boolean;
 }
 
 export default function ProposalsPage() {
@@ -63,6 +64,8 @@ export default function ProposalsPage() {
         for (let i = 1; i <= Number(totalProposals); i++) {
           try {
             const proposal = await contract.proposalIdtoProposal(i);
+            const resultCalculated = await contract.proposalToResultCalculated(i);
+            
             proposalsList.push({
               proposalId: Number(proposal.proposalId),
               proposalTitleAndDesc: proposal.proposalTitleAndDesc,
@@ -70,7 +73,8 @@ export default function ProposalsPage() {
               fundsNeeded: ethers.formatEther(proposal.fundsNeeded),
               beginningTime: Number(proposal.beginningTime),
               endingTime: Number(proposal.endingTime),
-              voteOnce: proposal.voteOnce
+              voteOnce: proposal.voteOnce,
+              isResultCalculated: resultCalculated
             });
           } catch (error) {
             console.error(`Error fetching proposal ${i}:`, error);
@@ -104,6 +108,34 @@ export default function ProposalsPage() {
   const isProposalActive = (beginningTime: number, endingTime: number) => {
     const now = Math.floor(Date.now() / 1000);
     return now >= beginningTime && now <= endingTime;
+  };
+
+  // Function to calculate proposal results
+  const handleCalculateResults = async (proposalId: number) => {
+    if (!isFounder || !project?.address) return;
+
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const contract = new ethers.Contract(project.address, ProjectABI, signer);
+
+      // Call calculateProposalResult function
+      const tx = await contract.calculateProposalResult(proposalId);
+      await tx.wait();
+
+      // Update the proposal in the list to reflect that results have been calculated
+      setProposals(prev => prev.map(p => 
+        p.proposalId === proposalId 
+          ? { ...p, isResultCalculated: true }
+          : p
+      ));
+      
+      alert("Proposal results calculated successfully!");
+
+    } catch (error: any) {
+      console.error("Calculate results failed:", error);
+      alert(`Calculate results failed: ${error.message || error.reason || "Unknown error"}`);
+    }
   };
 
   if (!project) {
@@ -261,10 +293,24 @@ export default function ProposalsPage() {
                     </Button>
                     {isProposalActive(proposal.beginningTime, proposal.endingTime) && (
                       <Button 
+                        onClick={() => router.push(`/startup/${projectId}/proposals/${proposal.proposalId}/vote`)}
                         className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-xl font-medium"
                       >
                         Vote Now
                       </Button>
+                    )}
+                    {isFounder && !isProposalActive(proposal.beginningTime, proposal.endingTime) && !proposal.isResultCalculated && (
+                      <Button 
+                        onClick={() => handleCalculateResults(proposal.proposalId)}
+                        className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-xl font-medium"
+                      >
+                        Get Results
+                      </Button>
+                    )}
+                    {proposal.isResultCalculated && (
+                      <Badge variant="outline" className="px-3 py-1 rounded-full text-sm font-medium bg-purple-50 text-purple-700 border-purple-200">
+                        Results Calculated
+                      </Badge>
                     )}
                   </div>
                 </div>
