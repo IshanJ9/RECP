@@ -254,6 +254,7 @@ export default function ProposalsPage() {
                   <div className="flex gap-3">
                     <Button 
                       variant="outline" 
+                      onClick={() => router.push(`/startup/${projectId}/proposals/${proposal.proposalId}`)}
                       className="flex-1 border-gray-300 text-gray-700 hover:bg-gray-50 py-2 rounded-xl font-medium"
                     >
                       View Details

@@ -25,12 +25,84 @@ export default function StartupDetailPage() {
   const [userInvestment, setUserInvestment] = useState<string>("0");
   const [isInvestmentLoading, setIsInvestmentLoading] = useState(true);
   const [investmentAmount, setInvestmentAmount] = useState<string>("");
-  const [isInvesting, setIsInvesting] = useState(false);
-  const [connectedAddress, setConnectedAddress] = useState<string>("");  const [userName, setUserName] = useState<string>("");
+  const [isInvesting, setIsInvesting] = useState(false);  const [connectedAddress, setConnectedAddress] = useState<string>("");  const [userName, setUserName] = useState<string>("");
   const [totalRaised, setTotalRaised] = useState<string>("0");
-  const [isLoadingStats, setIsLoadingStats] = useState(true);
-  const [showSuccessToast, setShowSuccessToast] = useState(false);
-  const [toastFadingOut, setToastFadingOut] = useState(false);
+  const [currentAmount, setCurrentAmount] = useState<string>("0");
+  const [totalWithdrawn, setTotalWithdrawn] = useState<string>("0");
+  const [isLoadingStats, setIsLoadingStats] = useState(true);const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [toastFadingOut, setToastFadingOut] = useState(false);  const [projectCopyTooltip, setProjectCopyTooltip] = useState<string>("Copy project address");
+  const [ownerCopyTooltip, setOwnerCopyTooltip] = useState<string>("Copy owner address");
+  const [showProjectTooltip, setShowProjectTooltip] = useState(false);
+  const [showOwnerTooltip, setShowOwnerTooltip] = useState(false);  // Copy to clipboard function
+  const copyProjectAddress = async () => {
+    if (!project?.address) return;
+    
+    try {
+      await navigator.clipboard.writeText(project.address);
+      setProjectCopyTooltip("Copied!");
+      setShowProjectTooltip(false);
+      setTimeout(() => {
+        setShowProjectTooltip(true);
+        setTimeout(() => {
+          setProjectCopyTooltip("Copy project address");
+          setShowProjectTooltip(false);
+        }, 2000);
+      }, 10);
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = project.address;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setProjectCopyTooltip("Copied!");
+      setShowProjectTooltip(false);
+      setTimeout(() => {
+        setShowProjectTooltip(true);
+        setTimeout(() => {
+          setProjectCopyTooltip("Copy project address");
+          setShowProjectTooltip(false);
+        }, 2000);
+      }, 10);
+    }
+  };
+
+  const copyOwnerAddress = async () => {
+    if (!project?.founder) return;
+    
+    try {
+      await navigator.clipboard.writeText(project.founder);
+      setOwnerCopyTooltip("Copied!");
+      setShowOwnerTooltip(false);
+      setTimeout(() => {
+        setShowOwnerTooltip(true);
+        setTimeout(() => {
+          setOwnerCopyTooltip("Copy owner address");
+          setShowOwnerTooltip(false);
+        }, 2000);
+      }, 10);
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = project.founder;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setOwnerCopyTooltip("Copied!");
+      setShowOwnerTooltip(false);
+      setTimeout(() => {
+        setShowOwnerTooltip(true);
+        setTimeout(() => {
+          setOwnerCopyTooltip("Copy owner address");
+          setShowOwnerTooltip(false);
+        }, 2000);
+      }, 10);
+    }
+  };
 
   // Get connected wallet address
   useEffect(() => {
@@ -77,14 +149,25 @@ export default function StartupDetailPage() {
         
         const provider = new ethers.BrowserProvider(window.ethereum);
         const contract = new ethers.Contract(project.address, ProjectABI, provider);
-        
-        // Try multiple methods to get total raised amount
+          // Try multiple methods to get total raised amount and current amount
         try {
-          // Method 1: Try currentInvestedAmount function
+          // Method 1: Try currentInvestedAmount and totalFundsWithdrawn functions
           const currentInvestedWei = await contract.currentInvestedAmount();
           const currentInvestedEth = ethers.formatEther(currentInvestedWei);
           setTotalRaised(currentInvestedEth);
+          
+          // Get total funds withdrawn
+          const totalWithdrawnWei = await contract.totalFundsWithdrawn();
+          const totalWithdrawnEth = ethers.formatEther(totalWithdrawnWei);
+          setTotalWithdrawn(totalWithdrawnEth);
+          
+          // Calculate current amount (total invested - total withdrawn)
+          const currentAmountValue = parseFloat(currentInvestedEth) - parseFloat(totalWithdrawnEth);
+          setCurrentAmount(currentAmountValue.toString());
+          
           console.log("Got total raised from currentInvestedAmount:", currentInvestedEth);
+          console.log("Got total withdrawn:", totalWithdrawnEth);
+          console.log("Current amount in project:", currentAmountValue);
         } catch (error1) {
           console.log("currentInvestedAmount failed, trying contract balance:", error1);
           try {
@@ -92,10 +175,14 @@ export default function StartupDetailPage() {
             const contractBalance = await provider.getBalance(project.address);
             const balanceEth = ethers.formatEther(contractBalance);
             setTotalRaised(balanceEth);
+            setCurrentAmount(balanceEth); // If can't get withdrawn amount, assume current = total
+            setTotalWithdrawn("0");
             console.log("Got total raised from contract balance:", balanceEth);
           } catch (error2) {
             console.error("Both methods failed:", error2);
             setTotalRaised("0");
+            setCurrentAmount("0");
+            setTotalWithdrawn("0");
           }
         }
       } catch (error) {
@@ -170,22 +257,35 @@ export default function StartupDetailPage() {
       const newInvestmentWei = await contract.userWallettoAmtInvested(connectedAddress);
       const newInvestmentEth = ethers.formatEther(newInvestmentWei);
       setUserInvestment(newInvestmentEth);
-      
-      // Refresh total raised amount with fallback methods
+        // Refresh total raised amount with fallback methods
       try {
         const newTotalRaisedWei = await contract.currentInvestedAmount();
         const newTotalRaisedEth = ethers.formatEther(newTotalRaisedWei);
         setTotalRaised(newTotalRaisedEth);
+        
+        // Also refresh current amount
+        try {
+          const totalWithdrawnWei = await contract.totalFundsWithdrawn();
+          const totalWithdrawnEth = ethers.formatEther(totalWithdrawnWei);
+          setTotalWithdrawn(totalWithdrawnEth);
+          
+          const currentAmountValue = parseFloat(newTotalRaisedEth) - parseFloat(totalWithdrawnEth);
+          setCurrentAmount(currentAmountValue.toString());
+        } catch (withdrawnError) {
+          console.log("Failed to get withdrawn amount, using total raised as current");
+          setCurrentAmount(newTotalRaisedEth);
+        }
       } catch (error) {
         console.log("currentInvestedAmount failed after investment, using contract balance");
         try {
           const contractBalance = await provider.getBalance(project.address);
           const balanceEth = ethers.formatEther(contractBalance);
           setTotalRaised(balanceEth);
+          setCurrentAmount(balanceEth); // If can't get withdrawn amount, assume current = total
         } catch (balanceError) {
           console.error("Failed to get contract balance:", balanceError);
         }
-      }      setInvestmentAmount("");
+      }setInvestmentAmount("");
       setShowSuccessToast(true);
       setToastFadingOut(false);
       setTimeout(() => {
@@ -281,22 +381,83 @@ export default function StartupDetailPage() {
             <div className="flex flex-col sm:flex-row sm:items-center gap-6">
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden flex items-center justify-center">
                 <Image src="/placeholder-avatar.png" width={64} height={64} alt="Project avatar" className="rounded-2xl" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2 break-words">{project.name}</h1>
+              </div>              <div className="min-w-0 flex-1">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+                  <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 break-words">{project.name}</h1>
+                  <div className="flex items-center gap-2">
+                    <div className="group relative">
+                      <a
+                        href={`https://sepolia.etherscan.io/address/${project.address}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-700 hover:text-blue-800 transition-all duration-200 text-xs font-mono"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                        <span className="hidden sm:inline">{project.address?.slice(0, 6)}...{project.address?.slice(-4)}</span>
+                        <span className="sm:hidden">{project.address?.slice(0, 4)}...{project.address?.slice(-2)}</span>
+                      </a>
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10">
+                        View on Etherscan
+                      </div>
+                    </div>                    <div className="relative">
+                      <button
+                        onClick={copyProjectAddress}
+                        className="p-1 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-all duration-200"
+                        disabled={!project.address}
+                        onMouseEnter={() => setShowProjectTooltip(true)}
+                        onMouseLeave={() => setShowProjectTooltip(false)}
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      </button>
+                      {showProjectTooltip && (
+                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap z-20">
+                          {projectCopyTooltip}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
                 <p className="text-base sm:text-lg text-gray-600 mb-2">by {project.founderName}</p>
-                <a
-                  href={`https://sepolia.etherscan.io/address/${project.founder}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-gray-900 transition-all duration-200 text-sm font-medium"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
-                  <span className="hidden sm:inline">{project.founder?.slice(0, 6)}...{project.founder?.slice(-4)}</span>
-                  <span className="sm:hidden">{project.founder?.slice(0, 4)}...{project.founder?.slice(-2)}</span>
-                </a>
+                <div className="flex items-center gap-2">
+                  <div className="group relative">
+                    <a
+                      href={`https://sepolia.etherscan.io/address/${project.founder}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-gray-900 transition-all duration-200 text-sm font-medium"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                      <span className="hidden sm:inline">{project.founder?.slice(0, 6)}...{project.founder?.slice(-4)}</span>
+                      <span className="sm:hidden">{project.founder?.slice(0, 4)}...{project.founder?.slice(-2)}</span>
+                    </a>
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10">
+                      View on Etherscan
+                    </div>
+                  </div>                  <div className="relative">
+                    <button
+                      onClick={copyOwnerAddress}
+                      className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-all duration-200"
+                      disabled={!project.founder}
+                      onMouseEnter={() => setShowOwnerTooltip(true)}
+                      onMouseLeave={() => setShowOwnerTooltip(false)}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                    </button>
+                    {showOwnerTooltip && (
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap z-20">
+                        {ownerCopyTooltip}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
             
@@ -404,11 +565,18 @@ export default function StartupDetailPage() {
                 <div className="flex items-center justify-center py-8">
                   <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                 </div>
-              ) : (
-                <div className="space-y-4">
+              ) : (                <div className="space-y-4">
                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
                     <span className="text-gray-600">Total Raised</span>
                     <span className="text-2xl font-bold text-green-600">{parseFloat(totalRaised).toFixed(4)} ETH</span>
+                  </div>
+                  
+                  
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+                    <span className="text-gray-600">Current Amount in Project</span>
+                    <div className="flex flex-col items-end">
+                      <span className="text-xl font-bold text-blue-600">{parseFloat(currentAmount).toFixed(4)} ETH</span>
+                    </div>
                   </div>
                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
                     <span className="text-gray-600">Target Budget</span>
@@ -450,14 +618,26 @@ export default function StartupDetailPage() {
           <div className="lg:col-span-1 space-y-6">
             {/* Stats Card */}
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 w-full">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Project Stats</h3>
-              <div className="space-y-3">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Project Stats</h3>              <div className="space-y-3">
                 <div className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">
                   <span className="text-sm text-gray-600">Total Raised</span>
                   {isLoadingStats ? (
                     <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
                   ) : (
                     <span className="font-semibold text-green-600 text-sm">{parseFloat(totalRaised).toFixed(4)} ETH</span>
+                  )}
+                </div>
+                
+               
+                
+                <div className="flex justify-between items-center p-3 bg-blue-50 rounded-xl">
+                  <div className="flex flex-col">
+                    <span className="text-sm text-gray-600">Current Amount in Project</span>
+                  </div>
+                  {isLoadingStats ? (
+                    <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <span className="font-semibold text-blue-600 text-sm">{parseFloat(currentAmount).toFixed(4)} ETH</span>
                   )}
                 </div>
                 <div className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">
@@ -493,8 +673,7 @@ export default function StartupDetailPage() {
             </div>
           </div>
         </div>
-      </div>
-        {/* Success Toast */}
+      </div>        {/* Success Toast */}
       {showSuccessToast && (
         <div className={`fixed top-4 right-4 z-50 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center space-x-2 ${toastFadingOut ? 'animate-fade-out' : 'animate-fade-in'}`}>
           <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center">
@@ -504,7 +683,6 @@ export default function StartupDetailPage() {
           </div>
           <span className="font-medium">Investment successful!</span>
         </div>
-      )}
-    </div>
+      )}    </div>
   );
 }
