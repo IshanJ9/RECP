@@ -301,7 +301,7 @@ export default function ProposalDetailsPage() {
               )}
 
               {/* Get Results Button - Show to owner when voting ended and results not calculated */}
-              {isOwner && !isProposalActive(proposal.beginningTime, proposal.endingTime) && !isResultCalculated && (
+              {isOwner && Math.floor(Date.now() / 1000) > proposal.endingTime && !isResultCalculated && (
                 <Button
                   onClick={handleCalculateResults}
                   disabled={isCalculatingResult}
@@ -502,8 +502,8 @@ export default function ProposalDetailsPage() {
             )}
           </div>
 
-          {/* Calculate Result Section - Show if owner and result not calculated */}
-          {isOwner && !isResultCalculated && (
+          {/* Calculate Result Section - Show if owner and result not calculated and proposal has ended */}
+          {isOwner && Math.floor(Date.now() / 1000) > proposal.endingTime && !isResultCalculated && (
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
               <h3 className="text-xl font-semibold text-gray-900 mb-4">Calculate Proposal Result</h3>
               <p className="text-gray-700 text-sm mb-4">

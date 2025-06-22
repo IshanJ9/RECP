@@ -10,7 +10,7 @@ interface SidebarProps {
 
 const Sidebar = ({ isExpanded, onToggle }: SidebarProps) => {
   const menuItems = [
-    { icon: Home, label: 'Home', path: '/' },
+    { icon: Home, label: 'Dashboard', path: '/dashboard' },
     { icon: FolderPlus, label: 'Create Project', path: '/create-project' },
     { icon: Folders, label: 'Your Projects', path: '/your-projects' },
     { icon: Settings, label: 'Settings', path: '/settings' }

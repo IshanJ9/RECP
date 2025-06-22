@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { usePathname } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import Sidebar from "@/components/sidebar";
 import { WagmiProvider } from "wagmi";
@@ -15,6 +16,11 @@ const queryClient = new QueryClient();
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const [isExpanded, setIsExpanded] = useState(true);
+  const pathname = usePathname();
+  
+  // Pages that should not show navbar/sidebar
+  const authPages = ['/signin', '/signup'];
+  const isAuthPage = authPages.includes(pathname);
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -33,29 +39,39 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 coolMode={true}
                 >
                 
-                {/* Navbar */}
-                <Navbar />
-
-                {/* Main container */}
-                <div className="flex">
-                  {/* Sidebar */}
-                  <aside
-                    className={`fixed left-0 top-16 h-[calc(100vh-4rem)] bg-white shadow-lg transition-all duration-300 ease-in-out ${
-                      isExpanded ? "w-64" : "w-16"
-                    }`}
-                  >
-                    <Sidebar isExpanded={isExpanded} onToggle={() => setIsExpanded(!isExpanded)} />
-                  </aside>
-
-                  {/* Main content */}
-                  <main
-                    className={`flex-1 transition-all duration-300 pt-16 bg-gray-50 min-h-screen ${
-                      isExpanded ? "ml-64" : "ml-16"
-                    }`}
-                  >
-                    <div className="p-8">{children}</div>
+                {isAuthPage ? (
+                  /* Auth pages - no navbar/sidebar */
+                  <main className="min-h-screen">
+                    {children}
                   </main>
-                </div>
+                ) : (
+                  /* Regular pages - with navbar/sidebar */
+                  <>
+                    {/* Navbar */}
+                    <Navbar />
+
+                    {/* Main container */}
+                    <div className="flex">
+                      {/* Sidebar */}
+                      <aside
+                        className={`fixed left-0 top-16 h-[calc(100vh-4rem)] bg-white shadow-lg transition-all duration-300 ease-in-out ${
+                          isExpanded ? "w-64" : "w-16"
+                        }`}
+                      >
+                        <Sidebar isExpanded={isExpanded} onToggle={() => setIsExpanded(!isExpanded)} />
+                      </aside>
+
+                      {/* Main content */}
+                      <main
+                        className={`flex-1 transition-all duration-300 pt-16 bg-gray-50 min-h-screen ${
+                          isExpanded ? "ml-64" : "ml-16"
+                        }`}
+                      >
+                        <div className="p-8">{children}</div>
+                      </main>
+                    </div>
+                  </>
+                )}
 
               </RainbowKitProvider>
             </QueryClientProvider>

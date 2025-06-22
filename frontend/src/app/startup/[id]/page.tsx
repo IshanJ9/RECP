@@ -7,11 +7,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useParams, useRouter } from 'next/navigation';
 import { useProjectStore } from '@/store/projectStore';
+import { useUserStore } from '@/store/userStore';
 import { ethers } from "ethers";
 import { formatEther } from "ethers";
 import ProjectABI from "@/utils/abi/Project.json";
 import ProjectFactoryABI from "@/utils/abi/ProjectFactory.json";
-import UserABI from "@/utils/abi/User.json";
+import { UserABI } from "@/utils/abi/User";
 
 const USER_CONTRACT_ADDRESS = "0x6E351c6758458Cd5bb20D263D566B50dDaE488C9";
 const PROJECT_FACTORY_ADDRESS = process.env.NEXT_PUBLIC_PROJECT_FACTORY_ADDRESS || "0xeb93f5612E883b38e023b2b1943dEAb0B5395Bfc";
@@ -21,8 +22,8 @@ export default function StartupDetailPage() {
   const router = useRouter();
   const projectId = params.id as string;
   const { projects, setProjects, getProjectById } = useProjectStore();
+  const { currentUser } = useUserStore();
   const project = getProjectById(projectId);
-  
   const [projectNotFound, setProjectNotFound] = useState(false);
   const [isLoadingProject, setIsLoadingProject] = useState(false);
   
@@ -36,9 +37,9 @@ export default function StartupDetailPage() {
   const [currentAmount, setCurrentAmount] = useState<string>("0");
   const [totalWithdrawn, setTotalWithdrawn] = useState<string>("0");
   const [isLoadingStats, setIsLoadingStats] = useState(true);const [showSuccessToast, setShowSuccessToast] = useState(false);
-  const [toastFadingOut, setToastFadingOut] = useState(false);
-  const [hasActiveProposals, setHasActiveProposals] = useState(false);
-  const [isCheckingProposals, setIsCheckingProposals] = useState(true);  const [projectCopyTooltip, setProjectCopyTooltip] = useState<string>("Copy project address");
+  const [toastFadingOut, setToastFadingOut] = useState(false);  const [hasActiveProposals, setHasActiveProposals] = useState(false);
+  const [isCheckingProposals, setIsCheckingProposals] = useState(true);
+  const [startDate, setStartDate] = useState<string>("");const [projectCopyTooltip, setProjectCopyTooltip] = useState<string>("Copy project address");
   const [ownerCopyTooltip, setOwnerCopyTooltip] = useState<string>("Copy owner address");
   const [showProjectTooltip, setShowProjectTooltip] = useState(false);
   const [showOwnerTooltip, setShowOwnerTooltip] = useState(false);  // Copy to clipboard function
@@ -225,12 +226,14 @@ export default function StartupDetailPage() {
                   
                   const investmentLimit = await projectContract.investmentLimit();
                   projectData.investmentLimit = investmentLimit._isBigNumber ? formatEther(investmentLimit) : investmentLimit?.toString?.();
-                  
-                  projectData.description = await projectContract.description();
+                    projectData.description = await projectContract.description();
                   projectData.category = await projectContract.category();
                   projectData.isActive = await projectContract.isActive();
                   
-                  // Create the project object in the same format as the store
+                  // Get start time
+                  const startTime = await projectContract.startTime();
+                  projectData.startTime = startTime?.toString?.() ?? "0";
+                    // Create the project object in the same format as the store
                   foundProject = {
                     id: projectData.id?.toString?.() ?? projectId,
                     name: projectData.name ?? `Project ${projectId}`,
@@ -244,6 +247,7 @@ export default function StartupDetailPage() {
                     category: projectData.category ?? "Other",
                     address: projectData.address ?? "",
                     isActive: projectData.isActive ?? true,
+                    startTime: projectData.startTime ?? "0",
                   };
                   
                   // Add this project to the store
@@ -337,9 +341,28 @@ export default function StartupDetailPage() {
         setIsLoadingStats(false);
       }
     };
-    
-    fetchProjectStats();
+      fetchProjectStats();
   }, [project?.address]);
+
+  // Format start date
+  useEffect(() => {
+    if (project && (project as any).startTime) {
+      const startTimeSeconds = Number((project as any).startTime);
+      if (startTimeSeconds > 0) {
+        const startDateObj = new Date(startTimeSeconds * 1000);
+        setStartDate(startDateObj.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        }));
+      } else {
+        setStartDate("Not available");
+      }
+    } else {
+      setStartDate("Not available");
+    }
+  }, [project]);
+
   // Check for active proposals
   useEffect(() => {
     if (!project?.address) {
@@ -391,8 +414,7 @@ export default function StartupDetailPage() {
     
     checkActiveProposals();
   }, [project?.address]);
-  
-  // Fetch user investment amount and user data
+    // Fetch user investment amount and user data
   useEffect(() => {
     if (!project?.address || !connectedAddress) {
       setIsInvestmentLoading(false);
@@ -410,14 +432,19 @@ export default function StartupDetailPage() {
         const investmentEth = ethers.formatEther(investmentWei);
         setUserInvestment(investmentEth);
 
-        // Try to get username from User contract
-        try {
-          const userContract = new ethers.Contract(USER_CONTRACT_ADDRESS, UserABI, provider);
-          const userData = await userContract.getUser(connectedAddress);
-          setUserName(userData[1]); // username is the second element
-        } catch (userError) {
-          console.log("User not found in contract, will use 'Anonymous' for investment");
-          setUserName("Anonymous");
+        // Use username from user store if available, otherwise fetch from contract
+        if (currentUser && currentUser.userName) {
+          setUserName(currentUser.userName);
+        } else {
+          // Try to get username from User contract as fallback
+          try {
+            const userContract = new ethers.Contract(USER_CONTRACT_ADDRESS, UserABI, provider);
+            const userData = await userContract.getUser(connectedAddress);
+            setUserName(userData[1]); // username is the second element
+          } catch (userError) {
+            console.log("User not found in contract, will use 'Anonymous' for investment");
+            setUserName("Anonymous");
+          }
         }
       } catch (error) {
         console.error("Error fetching user data:", error);
@@ -427,30 +454,45 @@ export default function StartupDetailPage() {
     };
     
     fetchUserData();
-  }, [project?.address, connectedAddress]);
-
-  // Handle investment
+  }, [project?.address, connectedAddress, currentUser]);  // Handle investment
   const handleInvestment = async () => {
     if (!investmentAmount || !connectedAddress || !project?.address) {
       alert("Please enter an investment amount and ensure your wallet is connected");
       return;
     }
 
+    // Get the username to use for the investment
+    const usernameToUse = currentUser?.userName || userName || "Anonymous";
+
     try {
       setIsInvesting(true);
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
       const contract = new ethers.Contract(project.address, ProjectABI, signer);
+      const userContract = new ethers.Contract(USER_CONTRACT_ADDRESS, UserABI, signer);
 
       // Convert investment amount to wei
       const investmentWei = ethers.parseEther(investmentAmount);
 
-      // Call invest function
-      const tx = await contract.invest(userName || "Anonymous", {
+      // Call invest function with the username
+      const tx = await contract.invest(usernameToUse, {
         value: investmentWei
       });
 
-      await tx.wait();      // Refresh data after successful investment
+      await tx.wait();
+
+      // Add this project to user's invested projects in User contract
+      // Only do this if the user is registered in the User contract
+      if (currentUser) {
+        try {
+          const addInvestedTx = await userContract.addInvestedProject(project.id);
+          await addInvestedTx.wait();
+          console.log("Successfully added project to user's invested projects");
+        } catch (investedError) {
+          console.error("Failed to add project to invested projects:", investedError);
+          // Don't fail the whole investment if this fails, as the investment itself succeeded
+        }
+      }// Refresh data after successful investment
       const newInvestmentWei = await contract.userWallettoAmtInvested(connectedAddress);
       const newInvestmentEth = ethers.formatEther(newInvestmentWei);
       setUserInvestment(newInvestmentEth);
@@ -866,11 +908,11 @@ export default function StartupDetailPage() {
                 <div className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">
                   <span className="text-sm text-gray-600">Target Budget</span>
                   <span className="font-semibold text-gray-900 text-sm">{project.budget} ETH</span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">
+                </div>                <div className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">
                   <span className="text-sm text-gray-600">Duration</span>
                   <span className="font-semibold text-gray-900 text-sm">{project.duration}</span>
                 </div>
+             
                 <div className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">
                   <span className="text-sm text-gray-600">Proposal Limit</span>
                   <span className="font-semibold text-gray-900 text-sm">{project.proposalLimit} ETH</span>

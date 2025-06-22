@@ -2,10 +2,12 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ethers } from "ethers";
-import UserABI from "@/utils/abi/User.json";
+import { UserABI } from "@/utils/abi/User";
 import { Button } from "@/components/ui/button";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { useUserStore } from "@/store/userStore";
 
-const USER_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_USER_CONTRACT_ADDRESS || "";
+const USER_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_USER_CONTRACT_ADDRESS?.replace(/['"]/g, '') || "";
 const CLOUDINARY_UPLOAD_PRESET = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET || "";
 const CLOUDINARY_CLOUD_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || "";
 
@@ -17,9 +19,9 @@ const SignupPage = () => {
   const [profileUrl, setProfileUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [uploading, setUploading] = useState(false);
+  const [success, setSuccess] = useState("");  const [uploading, setUploading] = useState(false);
   const router = useRouter();
+  const { setCurrentUser } = useUserStore();
 
   // Dynamically update wallet address on account change
   useEffect(() => {
@@ -90,11 +92,20 @@ const SignupPage = () => {
       if (!(window as any).ethereum) throw new Error("MetaMask not found");
       if (!profileUrl) throw new Error("Please upload a profile picture");
       const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const userContract = new ethers.Contract(USER_CONTRACT_ADDRESS, UserABI, signer);
+      const signer = await provider.getSigner();      const userContract = new ethers.Contract(USER_CONTRACT_ADDRESS, UserABI, signer);
       const tx = await userContract.addUser(username, name, profileUrl);
       await tx.wait();
-      setSuccess("Signup successful!");
+      
+      // Create user object and store in user store
+      const newUser = {
+        userWallet: wallet,
+        userName: username,
+        name: name,
+        userProfile: profileUrl
+      };
+      setCurrentUser(newUser);
+      
+      setSuccess("Account created successfully!");
       setTimeout(() => {
         router.push("/dashboard");
       }, 1200);
@@ -104,15 +115,30 @@ const SignupPage = () => {
       setLoading(false);
     }
   };
-
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
-      <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-md">
-        <h1 className="text-2xl font-bold mb-6 text-center">Sign Up</h1>
-        {wallet && (
-          <div className="mb-4 text-center text-green-600">Wallet Connected: {wallet.slice(0, 6)}...{wallet.slice(-4)}</div>
-        )}
-        <form onSubmit={handleSignup} className="space-y-4">
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl font-bold text-gray-900">Create Account</CardTitle>
+          <p className="text-gray-600 mt-2">Set up your ETH Town profile</p>
+        </CardHeader>
+        
+        <CardContent>
+          {wallet && (
+            <div className="mb-6 text-center">
+              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <p className="text-sm text-gray-600">Wallet Connected</p>
+              <p className="font-mono text-sm bg-gray-100 px-3 py-1 rounded-lg inline-block mt-1">
+                {wallet.slice(0, 6)}...{wallet.slice(-4)}
+              </p>
+            </div>
+          )}
+          
+          <form onSubmit={handleSignup} className="space-y-4">
           <div>
             <label className="block mb-1 font-medium">Username</label>
             <input
@@ -146,14 +172,51 @@ const SignupPage = () => {
             {profileUrl && (
               <img src={profileUrl} alt="Profile Preview" className="mt-2 w-20 h-20 rounded-full object-cover mx-auto" />
             )}
-          </div>
-          {error && <div className="text-red-600 text-sm">{error}</div>}
-          {success && <div className="text-green-600 text-sm">{success}</div>}
-          <Button type="submit" className="w-full" disabled={loading || !wallet || uploading}>
-            {loading ? "Signing Up..." : "Sign Up"}
+          </div>          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+              <div className="flex items-center space-x-2">
+                <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-sm text-red-700">{error}</span>
+              </div>
+            </div>
+          )}
+          {success && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+              <div className="flex items-center space-x-2">
+                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <span className="text-sm text-green-700">{success}</span>
+              </div>
+            </div>
+          )}
+          <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-medium" disabled={loading || !wallet || uploading}>
+            {loading ? (
+              <div className="flex items-center justify-center space-x-2">
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <span>Creating Account...</span>
+              </div>
+            ) : (
+              "Create Account"
+            )}
           </Button>
-        </form>
-      </div>
+          </form>
+          
+          <div className="text-center text-sm text-gray-500 mt-4">
+            <p>
+              Already have an account?{" "}
+              <button 
+                onClick={() => router.push("/signin")}
+                className="text-blue-600 hover:text-blue-700 font-medium"
+              >
+                Sign In
+              </button>
+            </p>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };

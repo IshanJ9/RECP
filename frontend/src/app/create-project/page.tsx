@@ -6,16 +6,18 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import ProjectFactoryABI from "@/utils/abi/ProjectFactory.json";
 import ProjectABI from "@/utils/abi/Project.json";
+import { UserABI } from "@/utils/abi/User";
 import { ethers } from "ethers";
 
 const PROJECT_FACTORY_ADDRESS = "0xeb93f5612E883b38e023b2b1943dEAb0B5395Bfc"; // Replace with your deployed address
+const USER_CONTRACT_ADDRESS = "0x6E351c6758458Cd5bb20D263D566B50dDaE488C9";
 
 export default function CreateProjectPage() {
   const router = useRouter();
-  const [step, setStep] = useState(1);
-  const [deploying, setDeploying] = useState(false);
+  const [step, setStep] = useState(1);  const [deploying, setDeploying] = useState(false);
   const [addingDetails, setAddingDetails] = useState(false);
   const [deployedProjectAddress, setDeployedProjectAddress] = useState("");
+  const [deployedProjectId, setDeployedProjectId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     // Step 1 fields
     name: "",
@@ -110,11 +112,11 @@ export default function CreateProjectPage() {
             return null;
           }
         })
-        .find((e: any) => e && e.name === "ProjectCreated");
-      if (event) {
+        .find((e: any) => e && e.name === "ProjectCreated");      if (event) {
         const projectId = event.args.projectId;
         const projectAddress = await factory.projectIdToAddress(projectId);
         setDeployedProjectAddress(projectAddress);
+        setDeployedProjectId(Number(projectId));
         setStep(2);
       } else {
         setErrors({ general: "Could not get deployed project address." });
@@ -140,8 +142,7 @@ export default function CreateProjectPage() {
         deployedProjectAddress,
         ProjectABI,
         signer
-      );
-      // Call addProjectDetails
+      );      // Call addProjectDetails
       const tx = await project.addProjectDetails(
         formData.tokenName,
         formData.tokenSymbol,
@@ -150,6 +151,25 @@ export default function CreateProjectPage() {
         formData.category
       );
       await tx.wait();
+      
+      // Add project to user's owned projects if we have the project ID
+      if (deployedProjectId !== null) {
+        try {
+          const userContract = new ethers.Contract(
+            USER_CONTRACT_ADDRESS,
+            UserABI,
+            signer
+          );
+          
+          const addOwnershipTx = await userContract.addOwnedProject(deployedProjectId);
+          await addOwnershipTx.wait();
+          console.log("Successfully added project to user's owned projects");
+        } catch (userError: any) {
+          console.error("Failed to add project to user's owned projects:", userError);
+          // Don't fail the entire process if this fails, just log it
+        }
+      }
+      
       router.push("/dashboard");
     } catch (err: any) {
       setErrors({ general: err.message || "Failed to add project details" });
