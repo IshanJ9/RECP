@@ -8,17 +8,23 @@ import { Input } from '@/components/ui/input';
 import { useParams, useRouter } from 'next/navigation';
 import { useProjectStore } from '@/store/projectStore';
 import { ethers } from "ethers";
+import { formatEther } from "ethers";
 import ProjectABI from "@/utils/abi/Project.json";
+import ProjectFactoryABI from "@/utils/abi/ProjectFactory.json";
 import UserABI from "@/utils/abi/User.json";
 
 const USER_CONTRACT_ADDRESS = "0x6E351c6758458Cd5bb20D263D566B50dDaE488C9";
+const PROJECT_FACTORY_ADDRESS = process.env.NEXT_PUBLIC_PROJECT_FACTORY_ADDRESS || "0xeb93f5612E883b38e023b2b1943dEAb0B5395Bfc";
 
 export default function StartupDetailPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
-  const getProjectById = useProjectStore(state => state.getProjectById);
+  const { projects, setProjects, getProjectById } = useProjectStore();
   const project = getProjectById(projectId);
+  
+  const [projectNotFound, setProjectNotFound] = useState(false);
+  const [isLoadingProject, setIsLoadingProject] = useState(false);
   
   const [timeRemaining, setTimeRemaining] = useState<string>("");
   const [isExpired, setIsExpired] = useState(false);
@@ -30,7 +36,9 @@ export default function StartupDetailPage() {
   const [currentAmount, setCurrentAmount] = useState<string>("0");
   const [totalWithdrawn, setTotalWithdrawn] = useState<string>("0");
   const [isLoadingStats, setIsLoadingStats] = useState(true);const [showSuccessToast, setShowSuccessToast] = useState(false);
-  const [toastFadingOut, setToastFadingOut] = useState(false);  const [projectCopyTooltip, setProjectCopyTooltip] = useState<string>("Copy project address");
+  const [toastFadingOut, setToastFadingOut] = useState(false);
+  const [hasActiveProposals, setHasActiveProposals] = useState(false);
+  const [isCheckingProposals, setIsCheckingProposals] = useState(true);  const [projectCopyTooltip, setProjectCopyTooltip] = useState<string>("Copy project address");
   const [ownerCopyTooltip, setOwnerCopyTooltip] = useState<string>("Copy owner address");
   const [showProjectTooltip, setShowProjectTooltip] = useState(false);
   const [showOwnerTooltip, setShowOwnerTooltip] = useState(false);  // Copy to clipboard function
@@ -103,7 +111,6 @@ export default function StartupDetailPage() {
       }, 10);
     }
   };
-
   // Get connected wallet address
   useEffect(() => {
     const getConnectedAddress = async () => {
@@ -132,7 +139,145 @@ export default function StartupDetailPage() {
         }
       });
     }
-  }, []);  // Fetch project stats (total raised) even without wallet connection
+  }, []);
+
+  // Fetch single project if not found in store (for direct navigation/reload)
+  useEffect(() => {
+    if (!project && !isLoadingProject && !projectNotFound && projectId) {
+      const fetchSingleProject = async () => {
+        try {
+          setIsLoadingProject(true);
+          
+          if (!(window as any).ethereum) {
+            console.log("No ethereum object found. Are you using a wallet like MetaMask?");
+            setProjectNotFound(true);
+            return;
+          }
+          
+          const provider = new ethers.BrowserProvider(window.ethereum);
+          
+          try {
+            await provider.send("eth_requestAccounts", []); // Request wallet connection
+          } catch (walletError) {
+            console.error("Failed to connect to wallet:", walletError);
+          }
+          
+          const factory = new ethers.Contract(
+            PROJECT_FACTORY_ADDRESS, 
+            ProjectFactoryABI, 
+            provider
+          );
+          
+          const signer = await provider.getSigner();
+          const connectedFactory = factory.connect(signer);
+            // Get total number of projects to search through
+          // @ts-ignore - TypeScript doesn't know about our contract methods
+          const numProjects = await connectedFactory.getNumberOfProjects();
+          let foundProject = null;
+            // Search for the project with matching ID
+          for (let i = 1; i <= numProjects; i++) {
+            try {
+              // @ts-ignore - TypeScript doesn't know about our contract methods
+              const projectAddr = await connectedFactory.projectIdToAddress(i);
+              
+              if (!projectAddr || projectAddr === ethers.ZeroAddress) {
+                continue;
+              }
+              
+              const projectContract = new ethers.Contract(projectAddr, ProjectABI, signer);
+              const contractProjectId = await projectContract.id();
+              
+              // Check if this is the project we're looking for
+              if (contractProjectId?.toString() === projectId) {
+                console.log("Found project with matching ID:", projectId);
+                
+                // Fetch all project data
+                const projectData: Record<string, any> = { address: projectAddr };
+                
+                try {
+                  projectData.id = contractProjectId;
+                  projectData.name = await projectContract.name();
+                  projectData.founderName = await projectContract.founderName();
+                  projectData.founder = await projectContract.founder();
+                  
+                  const budget = await projectContract.budget();
+                  projectData.budget = budget._isBigNumber ? formatEther(budget) : budget?.toString?.();
+                  
+                  let durationSeconds = await projectContract.duration();
+                  if (durationSeconds?._isBigNumber) durationSeconds = durationSeconds.toString();
+                  durationSeconds = Number(durationSeconds);
+                  
+                  const years = Math.floor(durationSeconds / (365 * 24 * 60 * 60));
+                  let remaining = durationSeconds % (365 * 24 * 60 * 60);
+                  const months = Math.floor(remaining / (30.44 * 24 * 60 * 60));
+                  remaining = remaining % Math.floor(30.44 * 24 * 60 * 60);
+                  const days = Math.floor(remaining / (24 * 60 * 60));
+                  
+                  let durationStr = '';
+                  if (years > 0) durationStr += `${years} years `;
+                  if (months > 0) durationStr += `${months} months `;
+                  if (days > 0) durationStr += `${days} days`;
+                  if (!durationStr) durationStr = '0 days';
+                  projectData.duration = durationStr.trim();
+                  
+                  const proposalLimit = await projectContract.proposalLimit();
+                  projectData.proposalLimit = proposalLimit?.toString?.();
+                  
+                  const investmentLimit = await projectContract.investmentLimit();
+                  projectData.investmentLimit = investmentLimit._isBigNumber ? formatEther(investmentLimit) : investmentLimit?.toString?.();
+                  
+                  projectData.description = await projectContract.description();
+                  projectData.category = await projectContract.category();
+                  projectData.isActive = await projectContract.isActive();
+                  
+                  // Create the project object in the same format as the store
+                  foundProject = {
+                    id: projectData.id?.toString?.() ?? projectId,
+                    name: projectData.name ?? `Project ${projectId}`,
+                    founderName: projectData.founderName ?? "Unknown",
+                    founder: projectData.founder ?? "",
+                    budget: projectData.budget ? (Number(projectData.budget) / 1e18).toString() : "0",
+                    duration: projectData.duration?.toString?.() ?? "0",
+                    proposalLimit: projectData.proposalLimit ? (Number(projectData.proposalLimit) / 1e18).toString() : "0",
+                    investmentLimit: projectData.investmentLimit ? (Number(projectData.investmentLimit) / 1e18).toString() : "0",
+                    description: projectData.description ?? "No description available",
+                    category: projectData.category ?? "Other",
+                    address: projectData.address ?? "",
+                    isActive: projectData.isActive ?? true,
+                  };
+                  
+                  // Add this project to the store
+                  const updatedProjects = [...projects, foundProject];
+                  setProjects(updatedProjects);
+                  
+                  console.log("Successfully fetched and added project to store:", foundProject);
+                  break;
+                } catch (error) {
+                  console.error(`Error fetching data for project ${i}:`, error);
+                }
+              }
+            } catch (error) {
+              console.error(`Error checking project ${i}:`, error);
+              continue;
+            }
+          }
+          
+          if (!foundProject) {
+            console.log("Project not found with ID:", projectId);
+            setProjectNotFound(true);
+          }
+          
+        } catch (error) {
+          console.error("Error fetching single project:", error);
+          setProjectNotFound(true);
+        } finally {
+          setIsLoadingProject(false);
+        }
+      };
+      
+      fetchSingleProject();
+    }
+  }, [project, projectId, isLoadingProject, projectNotFound, projects, setProjects]);// Fetch project stats (total raised) even without wallet connection
   useEffect(() => {
     if (!project?.address) {
       setIsLoadingStats(false);
@@ -195,6 +340,58 @@ export default function StartupDetailPage() {
     
     fetchProjectStats();
   }, [project?.address]);
+  // Check for active proposals
+  useEffect(() => {
+    if (!project?.address) {
+      setIsCheckingProposals(false);
+      return;
+    }
+    
+    const checkActiveProposals = async () => {
+      try {
+        setIsCheckingProposals(true);
+        if (!(window as any).ethereum) {
+          setIsCheckingProposals(false);
+          return;
+        }
+        
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const contract = new ethers.Contract(project.address, ProjectABI, provider);
+        
+        // Get total proposals
+        const totalProposals = await contract.totalProposals();
+        let hasActive = false;
+        
+        // Check each proposal to see if any are currently active
+        for (let i = 1; i <= Number(totalProposals); i++) {
+          try {
+            const proposal = await contract.proposalIdtoProposal(i);
+            const beginningTime = Number(proposal.beginningTime);
+            const endingTime = Number(proposal.endingTime);
+            const now = Math.floor(Date.now() / 1000);
+            
+            // Check if this proposal is currently active
+            if (now >= beginningTime && now <= endingTime) {
+              hasActive = true;
+              break; // Found at least one active proposal, no need to check more
+            }
+          } catch (error) {
+            console.error(`Error checking proposal ${i}:`, error);
+          }
+        }
+        
+        setHasActiveProposals(hasActive);
+      } catch (error) {
+        console.error("Error checking active proposals:", error);
+        setHasActiveProposals(false);
+      } finally {
+        setIsCheckingProposals(false);
+      }
+    };
+    
+    checkActiveProposals();
+  }, [project?.address]);
+  
   // Fetch user investment amount and user data
   useEffect(() => {
     if (!project?.address || !connectedAddress) {
@@ -350,22 +547,47 @@ export default function StartupDetailPage() {
     
     return () => clearInterval(interval);
   }, [project?.address]);
+  // Show loading state while fetching project
+  if (isLoadingProject) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <h1 className="text-xl font-semibold text-gray-700">Loading project...</h1>
+        </div>
+      </div>
+    );
+  }
 
-  // Optionally: fallback to static data or fetch from blockchain if not found
-  if (!project) {
+  // Show not found state if project couldn't be fetched
+  if (projectNotFound || (!project && !isLoadingProject)) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-semibold text-gray-900 mb-4">Project not found</h1>
+          <p className="text-gray-600 mb-6">The project you're looking for doesn't exist or couldn't be loaded.</p>
           <Button onClick={() => router.push('/dashboard')} className="bg-gray-900 hover:bg-black text-white">
             Back to Dashboard
           </Button>
         </div>
       </div>
     );
-  }  return (
+  }
+
+  // Fallback check for legacy compatibility
+  if (!project) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <h1 className="text-xl font-semibold text-gray-700">Loading project details...</h1>
+        </div>
+      </div>
+    );
+  }return (
     <div className="min-h-screen bg-gray-50 px-5">      {/* Header */}
-      <div className="bg-white border-b border-gray-200 rounded-2xl shadow-sm ">        <div className="container mx-auto px-4 sm:px-6 py-6">
+      <div className="bg-white border-b border-gray-200 rounded-2xl shadow-sm ">        
+        <div className="container mx-auto px-4 sm:px-6 py-6">
           <Button 
             variant="ghost" 
             onClick={() => router.push('/dashboard')}
@@ -658,11 +880,18 @@ export default function StartupDetailPage() {
                   <span className="font-semibold text-gray-900 text-sm">{project.investmentLimit} ETH</span>
                 </div>
               </div>
-            </div>
-
-            {/* Quick Actions Card */}
+            </div>            {/* Quick Actions Card */}
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 w-full">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Quick Actions</h3>                {isCheckingProposals ? (
+                  <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                ) : hasActiveProposals && (
+                  <Badge variant="outline" className="px-2 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border-green-200 flex items-center gap-1">
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    Active
+                  </Badge>
+                )}
+              </div>
               <div className="space-y-3">
                 <Button 
                   variant="outline" 
